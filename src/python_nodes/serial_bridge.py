@@ -34,18 +34,15 @@ class SerialBridge(Node):
         self.ser = None
         self.lock = threading.Lock()
         
-        if self.port == 'auto':
-            self.get_logger().info("Searching for Arduino bridge port dynamically...")
-            detected_port, active_ser = self.find_arduino_port()
-            if detected_port:
-                self.port = detected_port
-                self.ser = active_ser
-                self.get_logger().info(f"Dynamically detected and connected to Arduino on: {self.port}")
-            else:
-                self.get_logger().error("Could not dynamically detect Arduino bridge!")
-
-        if not self.ser and self.port != 'auto':
-            self.connect_serial()
+        # Initial connection
+        self.get_logger().info("Searching for Arduino bridge port dynamically...")
+        detected_port, active_ser = self.find_arduino_port()
+        if detected_port:
+            self.port = detected_port
+            self.ser = active_ser
+            self.get_logger().info(f"Dynamically detected and connected to Arduino on: {self.port}")
+        else:
+            self.get_logger().warn("Could not detect Arduino on startup, will keep scanning...")
 
         self.joy_min = 342
         self.joy_max = 1706
@@ -69,8 +66,17 @@ class SerialBridge(Node):
                 self.ser = None
 
     def recover_serial(self):
-        self.get_logger().info("Attempting to connect/reconnect to serial port...")
-        self.connect_serial()
+        self.get_logger().info("Scanning for Arduino bridge port to reconnect...")
+        detected_port, active_ser = self.find_arduino_port()
+        if detected_port:
+            with self.lock:
+                self.port = detected_port
+                self.ser = active_ser
+            self.get_logger().info(f"Reconnected successfully to Arduino on: {self.port}")
+        else:
+            # Fallback to last known port if dynamic scan yields nothing
+            if self.port != 'auto':
+                self.connect_serial()
 
     def find_arduino_port(self):
         by_id_path = '/dev/serial/by-id'
