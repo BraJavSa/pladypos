@@ -67,24 +67,32 @@ class IMUDriver(Node):
     def find_imu_port(self):
         by_id_path = '/dev/serial/by-id'
         by_id_ports = []
+        by_id_map = {}
         if os.path.exists(by_id_path):
             for f in os.listdir(by_id_path):
-                if 'razor' in f.lower() or 'ftdi' in f.lower() or 'usb-uart' in f.lower():
-                    path = os.path.join(by_id_path, f)
-                    by_id_ports.append(os.path.realpath(path))
-                    
+                path = os.path.join(by_id_path, f)
+                real = os.path.realpath(path)
+                by_id_ports.append(real)
+                by_id_map[real] = f.lower()
+
+        # 1. Try by-id names first (very reliable, avoids double-open)
+        arduino_port = None
+        for port, name in by_id_map.items():
+            if 'micro' in name or 'arduino' in name:
+                arduino_port = port
+                break
+                
+        for port, name in by_id_map.items():
+            if port != arduino_port:
+                if 'razor' in name or 'ftdi' in name or 'usb-uart' in name or 'usb' in name:
+                    return port
+
+        # 2. Fallback to candidate scan
         candidates = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
-        candidates = sorted(list(set([os.path.realpath(c) for c in candidates] + by_id_ports)))
-
-        # Check by-id names first for 'razor'
-        if os.path.exists(by_id_path):
-            for f in os.listdir(by_id_path):
-                if 'razor' in f.lower():
-                    return os.path.realpath(os.path.join(by_id_path, f))
-
+        candidates = sorted(list(set([os.path.realpath(c) for c in candidates])))
+        
         for port in candidates:
-            # Skip Arduino Micro/Arduino ports based on name
-            if 'micro' in port.lower() or 'arduino' in port.lower():
+            if port == arduino_port:
                 continue
             try:
                 ser = serial.Serial(port, self.baud, timeout=0.3)

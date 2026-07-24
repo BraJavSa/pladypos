@@ -36,11 +36,10 @@ class SerialBridge(Node):
         
         if self.port == 'auto':
             self.get_logger().info("Searching for Arduino bridge port dynamically...")
-            detected_port, active_ser = self.find_arduino_port()
+            detected_port = self.find_arduino_port()
             if detected_port:
                 self.port = detected_port
-                self.ser = active_ser
-                self.get_logger().info(f"Dynamically detected and connected to Arduino on: {self.port}")
+                self.connect_serial()
             else:
                 self.get_logger().warn("Could not detect Arduino on startup, will keep scanning...")
         else:
@@ -70,12 +69,11 @@ class SerialBridge(Node):
     def recover_serial(self):
         if self.port == 'auto':
             self.get_logger().info("Scanning for Arduino bridge port to reconnect...")
-            detected_port, active_ser = self.find_arduino_port()
+            detected_port = self.find_arduino_port()
             if detected_port:
                 with self.lock:
                     self.port = detected_port
-                    self.ser = active_ser
-                self.get_logger().info(f"Reconnected successfully to Arduino on: {self.port}")
+                self.connect_serial()
         else:
             self.get_logger().info(f"Attempting to reconnect to serial port {self.port}...")
             self.connect_serial()
@@ -91,14 +89,10 @@ class SerialBridge(Node):
                 by_id_ports.append(real)
                 by_id_map[real] = f.lower()
 
-        # 1. Try by-id names first (very reliable, avoids reset loop)
+        # 1. Try by-id names first (very reliable, avoids reset/double-open)
         for port, name in by_id_map.items():
             if 'micro' in name or 'arduino' in name:
-                try:
-                    ser = serial.Serial(port, self.baud, timeout=0.1)
-                    return port, ser
-                except Exception:
-                    continue
+                return port
 
         # 2. Fallback to handshake
         candidates = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
@@ -116,12 +110,12 @@ class SerialBridge(Node):
                 time.sleep(0.05)
                 buf = ser.read(30)
                 if b"PLADYPOS_BRIDGE" in buf:
-                    ser.timeout = 0.1
-                    return port, ser
+                    ser.close()
+                    return port
                 ser.close()
             except Exception:
                 continue
-        return None, None
+        return None
 
     def scale_value(self, val):
         return 2.0 * float(val - self.joy_min) / (self.joy_max - self.joy_min) - 1.0
