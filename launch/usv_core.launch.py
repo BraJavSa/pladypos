@@ -1,24 +1,48 @@
 import os
 import glob
+import time
+import serial
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-def find_serial_ports():
-    ports = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
+def find_imu_port():
     by_id_path = '/dev/serial/by-id'
+    by_id_ports = []
     if os.path.exists(by_id_path):
         for f in os.listdir(by_id_path):
-            ports.append(os.path.join(by_id_path, f))
-    return sorted(list(set(ports)))
+            path = os.path.join(by_id_path, f)
+            by_id_ports.append(os.path.realpath(path))
+            
+    candidates = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
+    candidates = sorted(list(set([os.path.realpath(c) for c in candidates] + by_id_ports)))
+    
+    for port in candidates:
+        try:
+            ser = serial.Serial(port, 115200, timeout=0.2)
+            time.sleep(0.05)
+            for _ in range(3):
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                if ',' in line and len(line.split(',')) >= 10:
+                    ser.close()
+                    return port
+            ser.close()
+        except Exception:
+            continue
+            
+    if os.path.exists(by_id_path):
+        for f in os.listdir(by_id_path):
+            if any(keyword in f.lower() for keyword in ['arduino', 'micro', 'razor']):
+                return os.path.realpath(os.path.join(by_id_path, f))
+                
+    if candidates:
+        return candidates[0]
+        
+    return '/dev/ttyACM1'
 
 def generate_launch_description():
-    detected_ports = find_serial_ports()
-    if detected_ports:
-        selected_port = detected_ports[0]
-    else:
-        selected_port = '/dev/ttyACM1'
+    selected_port = find_imu_port()
     
     baud_arg = DeclareLaunchArgument(
         'baud',
