@@ -1,0 +1,11 @@
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/uninstall.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/pladypos_uninstall.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/ament_cmake_python_copy_pladypos.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/ament_cmake_python_build_pladypos_egg.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/test.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/edit_cache.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/rebuild_cache.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/list_install_components.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/install.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/install/local.dir
+/home/brayan/ros2_ws/src/pladypos/build/pladypos/CMakeFiles/install/strip.dir

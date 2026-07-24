@@ -1,0 +1,11 @@
+source;share/pladypos/hook/cmake_prefix_path.ps1
+source;share/pladypos/hook/cmake_prefix_path.dsv
+source;share/pladypos/hook/cmake_prefix_path.sh
+source;share/pladypos/hook/pythonpath.ps1
+source;share/pladypos/hook/pythonpath.dsv
+source;share/pladypos/hook/pythonpath.sh
+source;share/pladypos/local_setup.bash
+source;share/pladypos/local_setup.dsv
+source;share/pladypos/local_setup.ps1
+source;share/pladypos/local_setup.sh
+source;share/pladypos/local_setup.zsh

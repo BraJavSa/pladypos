@@ -1,0 +1,6 @@
+CMake Error at cmake_install.cmake:70 (file):
+  file INSTALL cannot find
+  "/home/brayan/ros2_ws/src/pladypos/src/python_nodes/usv_controller.py": No
+  such file or directory.
+
+

@@ -1,0 +1,68 @@
+[0.007s] Invoking command in '/home/brayan/ros2_ws/src/pladypos/build/pladypos': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/brayan/ros2_ws/install/neroFly:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com VIRTUAL_ENV_PROMPT=(venv-ardupilot) /usr/bin/cmake /home/brayan/ros2_ws/src/pladypos -DCMAKE_INSTALL_PREFIX=/home/brayan/ros2_ws/src/pladypos/install/pladypos
+[0.059s] -- The C compiler identification is GNU 13.3.0
+[0.103s] -- The CXX compiler identification is GNU 13.3.0
+[0.120s] -- Detecting C compiler ABI info
+[0.182s] -- Detecting C compiler ABI info - done
+[0.187s] -- Check for working C compiler: /usr/lib/ccache/cc - skipped
+[0.187s] -- Detecting C compile features
+[0.187s] -- Detecting C compile features - done
+[0.197s] -- Detecting CXX compiler ABI info
+[0.263s] -- Detecting CXX compiler ABI info - done
+[0.268s] -- Check for working CXX compiler: /usr/lib/ccache/c++ - skipped
+[0.269s] -- Detecting CXX compile features
+[0.269s] -- Detecting CXX compile features - done
+[0.271s] -- Found ament_cmake: 2.5.5 (/opt/ros/jazzy/share/ament_cmake/cmake)
+[0.373s] -- Found Python3: /home/brayan/venv-ardupilot/bin/python3 (found version "3.12.3") found components: Interpreter 
+[0.450s] -- Found rclcpp: 28.1.16 (/opt/ros/jazzy/share/rclcpp/cmake)
+[0.483s] -- Found rosidl_generator_c: 4.6.7 (/opt/ros/jazzy/share/rosidl_generator_c/cmake)
+[0.494s] -- Found rosidl_generator_cpp: 4.6.7 (/opt/ros/jazzy/share/rosidl_generator_cpp/cmake)
+[0.506s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.519s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.579s] -- Found rmw_implementation_cmake: 7.3.3 (/opt/ros/jazzy/share/rmw_implementation_cmake/cmake)
+[0.582s] -- Found rmw_fastrtps_cpp: 8.4.3 (/opt/ros/jazzy/share/rmw_fastrtps_cpp/cmake)
+[0.640s] -- Found OpenSSL: /home/brayan/com_bebop_ws/install/ros2_parrot_arsdk/lib/libcrypto.so (found version "2.0.0")  
+[0.655s] -- Found FastRTPS: /opt/ros/jazzy/include (Required is at least version "2.13") 
+[0.674s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.725s] -- Found rclpy: 7.1.9 (/opt/ros/jazzy/share/rclpy/cmake)
+[0.727s] -- Found std_msgs: 5.3.6 (/opt/ros/jazzy/share/std_msgs/cmake)
+[0.737s] -- Found geometry_msgs: 5.3.6 (/opt/ros/jazzy/share/geometry_msgs/cmake)
+[0.748s] -- Found sensor_msgs: 5.3.6 (/opt/ros/jazzy/share/sensor_msgs/cmake)
+[0.764s] -- Found nav_msgs: 5.3.6 (/opt/ros/jazzy/share/nav_msgs/cmake)
+[0.782s] -- Found tf2: 0.36.19 (/opt/ros/jazzy/share/tf2/cmake)
+[0.786s] -- Found tf2_ros: 0.36.19 (/opt/ros/jazzy/share/tf2_ros/cmake)
+[1.011s] -- Configuring done (1.0s)
+[1.014s] -- Generating done (0.0s)
+[1.015s] -- Build files have been written to: /home/brayan/ros2_ws/src/pladypos/build/pladypos
+[1.022s] Invoked command in '/home/brayan/ros2_ws/src/pladypos/build/pladypos' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/brayan/ros2_ws/install/neroFly:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com VIRTUAL_ENV_PROMPT=(venv-ardupilot) /usr/bin/cmake /home/brayan/ros2_ws/src/pladypos -DCMAKE_INSTALL_PREFIX=/home/brayan/ros2_ws/src/pladypos/install/pladypos
+[1.023s] Invoking command in '/home/brayan/ros2_ws/src/pladypos/build/pladypos': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/brayan/ros2_ws/install/neroFly:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com VIRTUAL_ENV_PROMPT=(venv-ardupilot) /usr/bin/cmake --build /home/brayan/ros2_ws/src/pladypos/build/pladypos -- -j16 -l16
+[1.066s] Built target ament_cmake_python_copy_pladypos
+[1.221s] running egg_info
+[1.235s] creating pladypos.egg-info
+[1.235s] writing pladypos.egg-info/PKG-INFO
+[1.235s] writing dependency_links to pladypos.egg-info/dependency_links.txt
+[1.235s] writing top-level names to pladypos.egg-info/top_level.txt
+[1.235s] writing manifest file 'pladypos.egg-info/SOURCES.txt'
+[1.279s] reading manifest file 'pladypos.egg-info/SOURCES.txt'
+[1.279s] writing manifest file 'pladypos.egg-info/SOURCES.txt'
+[1.301s] Built target ament_cmake_python_build_pladypos_egg
+[1.308s] Invoked command in '/home/brayan/ros2_ws/src/pladypos/build/pladypos' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/brayan/ros2_ws/install/neroFly:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com VIRTUAL_ENV_PROMPT=(venv-ardupilot) /usr/bin/cmake --build /home/brayan/ros2_ws/src/pladypos/build/pladypos -- -j16 -l16
+[1.317s] Invoking command in '/home/brayan/ros2_ws/src/pladypos/build/pladypos': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/brayan/ros2_ws/install/neroFly:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com VIRTUAL_ENV_PROMPT=(venv-ardupilot) /usr/bin/cmake --install /home/brayan/ros2_ws/src/pladypos/build/pladypos
+[1.322s] -- Install configuration: ""
+[1.322s] -- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/environment/pythonpath.sh
+[1.322s] -- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/environment/pythonpath.dsv
+[1.322s] -- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info
+[1.322s] -- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info/PKG-INFO
+[1.322s] -- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info/top_level.txt
+[1.322s] -- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info/SOURCES.txt
+[1.322s] -- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info/dependency_links.txt
+[1.322s] -- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos
+[1.322s] -- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos/__init__.py
+[1.350s] Listing '/home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos'...
+[1.350s] Compiling '/home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos/__init__.py'...
+[1.353s] CMake Error at cmake_install.cmake:70 (file):
+[1.354s]   file INSTALL cannot find
+[1.354s]   "/home/brayan/ros2_ws/src/pladypos/src/python_nodes/usv_controller.py": No
+[1.354s]   such file or directory.
+[1.354s] 
+[1.354s] 
+[1.354s] Invoked command in '/home/brayan/ros2_ws/src/pladypos/build/pladypos' returned '1': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/brayan/ros2_ws/install/neroFly:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com VIRTUAL_ENV_PROMPT=(venv-ardupilot) /usr/bin/cmake --install /home/brayan/ros2_ws/src/pladypos/build/pladypos

@@ -1,0 +1,47 @@
+-- Found ament_cmake: 2.5.5 (/opt/ros/jazzy/share/ament_cmake/cmake)
+-- Found rclpy: 7.1.9 (/opt/ros/jazzy/share/rclpy/cmake)
+-- Found sensor_msgs: 5.3.6 (/opt/ros/jazzy/share/sensor_msgs/cmake)
+-- Found rosidl_generator_c: 4.6.7 (/opt/ros/jazzy/share/rosidl_generator_c/cmake)
+-- Found rosidl_generator_cpp: 4.6.7 (/opt/ros/jazzy/share/rosidl_generator_cpp/cmake)
+-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+-- Configuring done (0.4s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/brayan/ros2_ws/src/pladypos/build/pladypos
+Built target ament_cmake_python_copy_pladypos
+running egg_info
+writing pladypos.egg-info/PKG-INFO
+writing dependency_links to pladypos.egg-info/dependency_links.txt
+writing top-level names to pladypos.egg-info/top_level.txt
+reading manifest file 'pladypos.egg-info/SOURCES.txt'
+writing manifest file 'pladypos.egg-info/SOURCES.txt'
+Built target ament_cmake_python_build_pladypos_egg
+-- Install configuration: ""
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/environment/pythonpath.sh
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/environment/pythonpath.dsv
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info
+-- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info/PKG-INFO
+-- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info/top_level.txt
+-- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info/SOURCES.txt
+-- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos-1.0.0-py3.12.egg-info/dependency_links.txt
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos/__init__.py
+Listing '/home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/python3.12/site-packages/pladypos'...
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/lib/pladypos/imu_driver.py
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/launch
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/launch/usv_core.launch.py
+-- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/ament_index/resource_index/package_run_dependencies/pladypos
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/ament_index/resource_index/parent_prefix_path/pladypos
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/environment/ament_prefix_path.sh
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/environment/ament_prefix_path.dsv
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/environment/path.sh
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/environment/path.dsv
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/local_setup.bash
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/local_setup.sh
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/local_setup.zsh
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/local_setup.dsv
+-- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/package.dsv
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/ament_index/resource_index/packages/pladypos
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/cmake/pladyposConfig.cmake
+-- Up-to-date: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/cmake/pladyposConfig-version.cmake
+-- Installing: /home/brayan/ros2_ws/src/pladypos/install/pladypos/share/pladypos/package.xml
