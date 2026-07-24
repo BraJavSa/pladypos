@@ -100,6 +100,7 @@ def find_devices():
 
 def generate_launch_description():
     imu_port, arduino_port = find_devices()
+    print(f"DEBUG LAUNCH: Detected imu_port='{imu_port}', arduino_port='{arduino_port}'")
     
     usv_id = 5
     try:
