@@ -10,6 +10,17 @@ uint16_t spektrum_channels[6] = {1024, 1024, 1024, 1024, 1024, 1024};
 unsigned long last_cmd_time = 0;
 unsigned long last_spektrum_time = 0;
 unsigned long last_telemetry_time = 0;
+bool spektrum_received = false;
+
+float scale_spektrum(uint16_t val) {
+  if (val < 342) val = 342;
+  if (val > 1706) val = 1706;
+  return 2.0 * ((float)val - 342.0) / (1706.0 - 342.0) - 1.0;
+}
+
+bool is_radio_active() {
+  return spektrum_received && (millis() - last_spektrum_time < 500);
+}
 
 void setup() {
   Serial.begin(115200);
@@ -26,9 +37,39 @@ void loop() {
   readSpektrum();
   sendTelemetry();
 
-  if (millis() - last_cmd_time > MAX_IDLE) {
-    for (int i = 0; i < DRIVER_NUM; ++i) {
-      motors[i].writeMicroseconds(MOTOR_BASE);
+  if (is_radio_active()) {
+    // Radio has priority - Mix channels directly and apply to motors
+    float surge = scale_spektrum(spektrum_channels[0]);
+    float sway = scale_spektrum(spektrum_channels[1]);
+    float yaw = scale_spektrum(spektrum_channels[2]);
+
+    float u1 = surge - sway - yaw;
+    float u2 = surge + sway + yaw;
+    float u3 = -surge - sway + yaw;
+    float u4 = -surge + sway - yaw;
+
+    float max_val = abs(u1);
+    if (abs(u2) > max_val) max_val = abs(u2);
+    if (abs(u3) > max_val) max_val = abs(u3);
+    if (abs(u4) > max_val) max_val = abs(u4);
+
+    if (max_val > 1.0) {
+      u1 /= max_val;
+      u2 /= max_val;
+      u3 /= max_val;
+      u4 /= max_val;
+    }
+
+    motors[0].writeMicroseconds(MOTOR_BASE + (int)(400 * u1));
+    motors[1].writeMicroseconds(MOTOR_BASE + (int)(400 * u2));
+    motors[2].writeMicroseconds(MOTOR_BASE + (int)(400 * u3));
+    motors[3].writeMicroseconds(MOTOR_BASE + (int)(400 * u4));
+  } else {
+    // ROS (PC) controls the motors
+    if (millis() - last_cmd_time > MAX_IDLE) {
+      for (int i = 0; i < DRIVER_NUM; ++i) {
+        motors[i].writeMicroseconds(MOTOR_BASE);
+      }
     }
   }
 }
@@ -82,11 +123,14 @@ void readSerialPC() {
 
 void processPCPacket(uint8_t type, uint8_t *data, uint8_t len) {
   if (type == 0x00 && len == 8) {
-    uint16_t pwm_vals[4];
-    memcpy(pwm_vals, data, 8);
-    for (int i = 0; i < DRIVER_NUM; ++i) {
-      if (pwm_vals[i] >= 1000 && pwm_vals[i] <= 2000) {
-        motors[i].writeMicroseconds(pwm_vals[i]);
+    // Only apply ROS commands if the physical radio is inactive
+    if (!is_radio_active()) {
+      uint16_t pwm_vals[4];
+      memcpy(pwm_vals, data, 8);
+      for (int i = 0; i < DRIVER_NUM; ++i) {
+        if (pwm_vals[i] >= 1000 && pwm_vals[i] <= 2000) {
+          motors[i].writeMicroseconds(pwm_vals[i]);
+        }
       }
     }
     last_cmd_time = millis();
@@ -128,6 +172,8 @@ void readSpektrum() {
           spektrum_channels[chan] = val;
         }
       }
+      spektrum_received = true;
+      last_spektrum_time = millis();
       sendSpektrumToPC();
       packet_idx = 0;
     }
