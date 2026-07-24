@@ -83,15 +83,31 @@ class SerialBridge(Node):
     def find_arduino_port(self):
         by_id_path = '/dev/serial/by-id'
         by_id_ports = []
+        by_id_map = {}
         if os.path.exists(by_id_path):
             for f in os.listdir(by_id_path):
                 path = os.path.join(by_id_path, f)
-                by_id_ports.append(os.path.realpath(path))
-                
+                real = os.path.realpath(path)
+                by_id_ports.append(real)
+                by_id_map[real] = f.lower()
+
+        # 1. Try by-id names first (very reliable, avoids reset loop)
+        for port, name in by_id_map.items():
+            if 'micro' in name or 'arduino' in name:
+                try:
+                    ser = serial.Serial(port, self.baud, timeout=0.1)
+                    return port, ser
+                except Exception:
+                    continue
+
+        # 2. Fallback to handshake
         candidates = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
         candidates = sorted(list(set([os.path.realpath(c) for c in candidates] + by_id_ports)))
 
         for port in candidates:
+            name = by_id_map.get(port, '')
+            if 'razor' in name:
+                continue
             try:
                 ser = serial.Serial(port, self.baud, timeout=0.15)
                 ser.reset_input_buffer()
