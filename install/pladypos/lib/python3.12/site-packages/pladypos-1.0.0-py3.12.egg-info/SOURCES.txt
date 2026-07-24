@@ -1,6 +1,0 @@
-setup.py
-pladypos/__init__.py
-pladypos.egg-info/PKG-INFO
-pladypos.egg-info/SOURCES.txt
-pladypos.egg-info/dependency_links.txt
-pladypos.egg-info/top_level.txt
