@@ -23,6 +23,7 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   src/python_nodes/usv_controller.py
   src/python_nodes/thruster_allocation.py
+  src/python_nodes/imu_driver.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
