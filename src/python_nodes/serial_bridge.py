@@ -32,30 +32,45 @@ class SerialBridge(Node):
         )
 
         self.ser = None
+        self.lock = threading.Lock()
+        
         if self.port == 'auto':
             self.get_logger().info("Searching for Arduino bridge port dynamically...")
-            detected_port = self.find_arduino_port()
+            detected_port, active_ser = self.find_arduino_port()
             if detected_port:
                 self.port = detected_port
-                self.get_logger().info(f"Dynamically detected Arduino on: {self.port}")
+                self.ser = active_ser
+                self.get_logger().info(f"Dynamically detected and connected to Arduino on: {self.port}")
             else:
                 self.get_logger().error("Could not dynamically detect Arduino bridge!")
 
-        if self.port != 'auto':
-            try:
-                self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
-                self.get_logger().info(f"Connected to Arduino on {self.port} at {self.baud} baud.")
-            except Exception as e:
-                self.get_logger().error(f"Could not open serial port {self.port}: {e}")
-                self.ser = None
+        if not self.ser and self.port != 'auto':
+            self.connect_serial()
 
         self.joy_min = 342
         self.joy_max = 1706
 
         self.running = True
         self.read_thread = threading.Thread(target=self.receive_loop, daemon=True)
-        if self.ser and self.ser.is_open:
-            self.read_thread.start()
+        self.read_thread.start()
+
+    def connect_serial(self):
+        with self.lock:
+            try:
+                if self.ser:
+                    try:
+                        self.ser.close()
+                    except Exception:
+                        pass
+                self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
+                self.get_logger().info(f"Connected to Arduino on {self.port} at {self.baud} baud.")
+            except Exception as e:
+                self.get_logger().warn(f"Could not open serial port {self.port}: {e}")
+                self.ser = None
+
+    def recover_serial(self):
+        self.get_logger().info("Attempting to connect/reconnect to serial port...")
+        self.connect_serial()
 
     def find_arduino_port(self):
         by_id_path = '/dev/serial/by-id'
@@ -76,39 +91,42 @@ class SerialBridge(Node):
                 ser.write(bytearray([0xFF, 0xFF, 0xF0, 0x00, 0xF0]))
                 time.sleep(0.05)
                 buf = ser.read(30)
-                ser.close()
                 if b"PLADYPOS_BRIDGE" in buf:
-                    return port
+                    ser.timeout = 0.1
+                    return port, ser
+                ser.close()
             except Exception:
                 continue
-        return None
+        return None, None
 
     def scale_value(self, val):
         return 2.0 * float(val - self.joy_min) / (self.joy_max - self.joy_min) - 1.0
 
     def pwm_callback(self, msg):
-        if not self.ser or not self.ser.is_open or not hasattr(msg, 'data'):
-            return
+        with self.lock:
+            if not self.ser or not self.ser.is_open or not hasattr(msg, 'data'):
+                return
 
-        # Supports both single Float32 or Float32MultiArray for backward compatibility
-        try:
-            vals = list(msg.data)
-        except TypeError:
-            vals = [msg.data]
+            try:
+                vals = list(msg.data)
+            except TypeError:
+                vals = [msg.data]
 
-        payload = bytearray()
-        for val in vals[:4]:
-            pwm_val = int(1500 + 400 * max(-1.0, min(1.0, val)))
-            payload.extend(struct.pack('<H', pwm_val))
+            payload = bytearray()
+            for val in vals[:4]:
+                pwm_val = int(1500 + 400 * max(-1.0, min(1.0, val)))
+                payload.extend(struct.pack('<H', pwm_val))
 
-        header = bytearray([0xFF, 0xFF, 0x00, len(payload)])
-        checksum = sum(header[2:] + payload) & 0xFF
-        packet = header + payload + bytearray([checksum])
+            header = bytearray([0xFF, 0xFF, 0x00, len(payload)])
+            checksum = sum(header[2:] + payload) & 0xFF
+            packet = header + payload + bytearray([checksum])
 
-        try:
-            self.ser.write(packet)
-        except Exception as e:
-            self.get_logger().warn(f"Failed to send PWM to Arduino: {e}")
+            try:
+                self.ser.write(packet)
+            except Exception as e:
+                self.get_logger().warn(f"Failed to send PWM to Arduino: {e}")
+                # Trigger recovery in a non-blocking thread
+                threading.Thread(target=self.recover_serial, daemon=True).start()
 
     def receive_loop(self):
         state = 0
@@ -118,10 +136,22 @@ class SerialBridge(Node):
 
         while rclpy.ok() and self.running:
             try:
-                if not self.ser or not self.ser.is_open:
-                    break
+                with self.lock:
+                    if not self.ser or not self.ser.is_open:
+                        ser_ok = False
+                    else:
+                        ser_ok = True
+                
+                if not ser_ok:
+                    self.recover_serial()
+                    time.sleep(1.5)
+                    continue
 
-                b = self.ser.read(1)
+                b = b''
+                with self.lock:
+                    if self.ser and self.ser.is_open:
+                        b = self.ser.read(1)
+                
                 if not b:
                     continue
                 val = b[0]
@@ -153,7 +183,14 @@ class SerialBridge(Node):
 
             except Exception as e:
                 self.get_logger().warn(f"Serial read error: {e}")
-                break
+                with self.lock:
+                    if self.ser:
+                        try:
+                            self.ser.close()
+                        except Exception:
+                            pass
+                        self.ser = None
+                time.sleep(1.5)
 
     def process_packet(self, p_type, payload):
         if p_type == 1:
@@ -184,8 +221,9 @@ class SerialBridge(Node):
 
     def destroy_node(self):
         self.running = False
-        if self.ser and self.ser.is_open:
-            self.ser.close()
+        with self.lock:
+            if self.ser and self.ser.is_open:
+                self.ser.close()
         super().destroy_node()
 
 def main(args=None):
