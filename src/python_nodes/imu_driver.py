@@ -4,13 +4,16 @@ import rclpy
 from rclpy.node import Node
 import serial
 import math
+import os
+import glob
+import time
 from sensor_msgs.msg import Imu, MagneticField
 
 class IMUDriver(Node):
     def __init__(self):
         super().__init__('imu_driver')
 
-        self.declare_parameter('port', '/dev/razor')
+        self.declare_parameter('port', 'auto')
         self.declare_parameter('baud', 115200)
         self.declare_parameter('use_ned', True)
 
@@ -21,16 +24,87 @@ class IMUDriver(Node):
         self.imu_pub = self.create_publisher(Imu, 'imu/data_raw', 10)
         self.mag_pub = self.create_publisher(MagneticField, 'imu/mag', 10)
 
-        try:
-            self.ser = serial.Serial(self.port, self.baud, timeout=1)
-            self.get_logger().info(f"Connected to IMU on {self.port} at {self.baud} baud.")
-        except Exception as e:
-            self.get_logger().error(f"Could not open port {self.port}: {e}")
-            raise e
+        self.ser = None
+        self.last_reconnect_time = 0.0
+
+        if self.port == 'auto':
+            self.get_logger().info("Searching for IMU port dynamically...")
+            detected_port = self.find_imu_port()
+            if detected_port:
+                self.port = detected_port
+                self.connect_serial()
+            else:
+                self.get_logger().warn("Could not detect IMU on startup, will keep scanning...")
+        else:
+            self.connect_serial()
 
         self.create_timer(0.01, self.read_serial)
 
+    def connect_serial(self):
+        try:
+            if self.ser:
+                try:
+                    self.ser.close()
+                except Exception:
+                    pass
+            self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
+            self.get_logger().info(f"Connected to IMU on {self.port} at {self.baud} baud.")
+        except Exception as e:
+            self.get_logger().warn(f"Could not open IMU port {self.port}: {e}")
+            self.ser = None
+
+    def recover_serial(self):
+        if self.port == 'auto':
+            self.get_logger().info("Scanning for IMU port to reconnect...")
+            detected_port = self.find_imu_port()
+            if detected_port:
+                self.port = detected_port
+                self.connect_serial()
+        else:
+            self.get_logger().info(f"Attempting to reconnect to IMU port {self.port}...")
+            self.connect_serial()
+
+    def find_imu_port(self):
+        by_id_path = '/dev/serial/by-id'
+        by_id_ports = []
+        if os.path.exists(by_id_path):
+            for f in os.listdir(by_id_path):
+                if 'razor' in f.lower() or 'ftdi' in f.lower() or 'usb-uart' in f.lower():
+                    path = os.path.join(by_id_path, f)
+                    by_id_ports.append(os.path.realpath(path))
+                    
+        candidates = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
+        candidates = sorted(list(set([os.path.realpath(c) for c in candidates] + by_id_ports)))
+
+        # Check by-id names first for 'razor'
+        if os.path.exists(by_id_path):
+            for f in os.listdir(by_id_path):
+                if 'razor' in f.lower():
+                    return os.path.realpath(os.path.join(by_id_path, f))
+
+        for port in candidates:
+            # Skip Arduino Micro/Arduino ports based on name
+            if 'micro' in port.lower() or 'arduino' in port.lower():
+                continue
+            try:
+                ser = serial.Serial(port, self.baud, timeout=0.3)
+                time.sleep(0.1)
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                ser.close()
+                if ',' in line and len(line.split(',')) >= 10:
+                    return port
+            except Exception:
+                continue
+        return None
+
     def read_serial(self):
+        if not self.ser or not self.ser.is_open:
+            now = self.get_clock().now().nanoseconds / 1e9
+            if now - self.last_reconnect_time > 1.5:
+                self.last_reconnect_time = now
+                self.recover_serial()
+            return
+
         try:
             if self.ser.in_waiting > 0:
                 line = self.ser.readline().decode('utf-8', errors='ignore').strip()
@@ -73,6 +147,17 @@ class IMUDriver(Node):
 
         except Exception as e:
             self.get_logger().warn(f"Error reading serial port: {e}")
+            try:
+                self.ser.close()
+            except Exception:
+                pass
+            self.ser = None
+            self.last_reconnect_time = self.get_clock().now().nanoseconds / 1e9
+
+    def destroy_node(self):
+        if self.ser and self.ser.is_open:
+            self.ser.close()
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)

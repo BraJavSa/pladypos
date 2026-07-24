@@ -1,7 +1,4 @@
 import os
-import glob
-import time
-import serial
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -10,98 +7,7 @@ from launch.event_handlers import OnProcessStart
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-def find_devices():
-    by_id_path = '/dev/serial/by-id'
-    by_id_ports = []
-    by_id_map = {}
-    if os.path.exists(by_id_path):
-        for f in os.listdir(by_id_path):
-            path = os.path.join(by_id_path, f)
-            real = os.path.realpath(path)
-            by_id_ports.append(real)
-            by_id_map[real] = f.lower()
-            
-    candidates = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
-    candidates = sorted(list(set([os.path.realpath(c) for c in candidates] + by_id_ports)))
-    
-    imu_port = None
-    arduino_port = None
-    
-    # 1. Classify by by-id names first (very reliable)
-    for port, name in by_id_map.items():
-        if 'micro' in name or 'arduino' in name:
-            arduino_port = port
-        elif 'razor' in name:
-            imu_port = port
-
-    # 2. If Arduino port not found by by-id, use handshake
-    if not arduino_port:
-        for port in candidates:
-            if port == imu_port:
-                continue
-            try:
-                ser = serial.Serial(port, 115200, timeout=0.15)
-                ser.reset_input_buffer()
-                ser.reset_output_buffer()
-                ser.write(bytearray([0xFF, 0xFF, 0xF0, 0x00, 0xF0]))
-                time.sleep(0.05)
-                buf = ser.read(30)
-                ser.close()
-                
-                if b"PLADYPOS_BRIDGE" in buf:
-                    arduino_port = port
-                    break
-            except Exception:
-                continue
-                
-    # 3. If IMU port not found by by-id, use data line check
-    if not imu_port:
-        for port in candidates:
-            if port == arduino_port:
-                continue
-            try:
-                ser = serial.Serial(port, 115200, timeout=0.2)
-                time.sleep(0.05)
-                line = ser.readline().decode('utf-8', errors='ignore').strip()
-                ser.close()
-                if ',' in line and len(line.split(',')) >= 10:
-                    imu_port = port
-                    break
-            except Exception:
-                continue
-
-    # 4. Fallback defaults if still not found, ensuring they never match
-    if not arduino_port and not imu_port:
-        arduino_port = '/dev/ttyACM0'
-        imu_port = '/dev/ttyACM1'
-    elif not arduino_port:
-        for c in candidates:
-            if c != imu_port:
-                arduino_port = c
-                break
-        if not arduino_port:
-            arduino_port = '/dev/ttyACM0' if imu_port != '/dev/ttyACM0' else '/dev/ttyACM1'
-    elif not imu_port:
-        for c in candidates:
-            if c != arduino_port:
-                imu_port = c
-                break
-        if not imu_port:
-            imu_port = '/dev/ttyACM1' if arduino_port != '/dev/ttyACM1' else '/dev/ttyACM0'
-
-    # 5. Final emergency check: they must NEVER be the same port
-    if arduino_port == imu_port:
-        if arduino_port == '/dev/ttyACM0':
-            imu_port = '/dev/ttyACM1'
-        else:
-            imu_port = '/dev/ttyACM0'
-            
-    return imu_port, arduino_port
-
 def generate_launch_description():
-    imu_port, arduino_port = find_devices()
-    print(f"DEBUG LAUNCH: Detected imu_port='{imu_port}', arduino_port='{arduino_port}'")
-    
     usv_id = 5
     try:
         config_path = os.path.join(get_package_share_directory('pladypos'), 'config', 'usv_config.yaml')
@@ -126,6 +32,18 @@ def generate_launch_description():
         default_value='115200',
         description='Baud rate for the IMU and Arduino communication'
     )
+    
+    port_imu_arg = DeclareLaunchArgument(
+        'port_imu',
+        default_value='auto',
+        description='Port of the IMU'
+    )
+
+    port_arduino_arg = DeclareLaunchArgument(
+        'port_arduino',
+        default_value='auto',
+        description='Port of the Arduino'
+    )
 
     imu_driver_node = Node(
         package='pladypos',
@@ -134,7 +52,7 @@ def generate_launch_description():
         namespace=ns,
         output='screen',
         parameters=[{
-            'port': imu_port,
+            'port': LaunchConfiguration('port_imu'),
             'baud': LaunchConfiguration('baud'),
             'use_ned': True
         }]
@@ -147,7 +65,7 @@ def generate_launch_description():
         namespace=ns,
         output='screen',
         parameters=[{
-            'port': arduino_port,
+            'port': LaunchConfiguration('port_arduino'),
             'baud': LaunchConfiguration('baud')
         }]
     )
@@ -181,6 +99,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         baud_arg,
+        port_imu_arg,
+        port_arduino_arg,
         imu_driver_node,
         serial_bridge_node,
         teleop_mixer_node,
