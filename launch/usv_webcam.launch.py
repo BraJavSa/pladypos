@@ -103,7 +103,7 @@ def generate_launch_description():
             'sensor': '',
             'publish_tf': False,        # Disable transform calculations
             'worker_threads': 2,        # Restrict threads to save CPU
-            'fps_limit': -1,
+            'fps_limit': -1.0,
             'use_png': False,
             'jpeg_quality': 85,         # Compressed JPEG stream for WiFi efficiency
             'png_level': 1,
