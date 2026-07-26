@@ -113,6 +113,8 @@ def generate_launch_description():
         remappings=[
             ('/kinect2/qhd/image_color_rect', f'/{ns}/camera/image_raw'),
             ('/kinect2/qhd/image_color_rect/compressed', f'/{ns}/camera/image_raw/compressed'),
+            ('/kinect2/qhd/image_depth_rect', f'/{ns}/camera/depth'),
+            ('/kinect2/qhd/image_depth_rect/compressed', f'/{ns}/camera/depth/compressed'),
         ],
         output='screen'
     )
