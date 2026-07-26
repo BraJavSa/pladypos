@@ -124,6 +124,19 @@ def generate_launch_description():
         )
     )
 
+    web_video_server_node = Node(
+        package='web_video_server',
+        executable='web_video_server',
+        name='web_video_server',
+        parameters=[{
+            'port': 8080,
+            'address': '0.0.0.0',
+            'type': 'mjpeg',
+            'default_transport': 'compressed'
+        }],
+        output='screen'
+    )
+
     return LaunchDescription([
         baud_arg,
         port_imu_arg,
@@ -132,5 +145,6 @@ def generate_launch_description():
         serial_bridge_node,
         teleop_mixer_node,
         kinect_webcam_node,
+        web_video_server_node,
         filter_start_event
     ])
