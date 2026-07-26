@@ -110,31 +110,38 @@ void processPCPacket(uint8_t type, uint8_t *data, uint8_t len) {
 void readSpektrum() {
   static uint8_t packet[16];
   static uint8_t packet_idx = 0;
-  static unsigned long last_byte_time = 0;
+  static unsigned long last_avail_time = 0;
+  static bool in_gap = false;
 
-  while (Serial1.available() > 0) {
-    unsigned long now = millis();
-    if (now - last_byte_time > 5) {
-      packet_idx = 0;
+  if (Serial1.available() == 0) {
+    if (millis() - last_avail_time > 4) {
+      in_gap = true;
     }
-    last_byte_time = now;
-
-    packet[packet_idx++] = Serial1.read();
-
-    if (packet_idx == 16) {
-      for (int i = 1; i < 8; ++i) {
-        uint8_t b1 = packet[2 * i];
-        uint8_t b2 = packet[2 * i + 1];
-        uint8_t chan = (b1 >> 3) & 0x0F;
-        uint16_t val = ((b1 & 0x07) << 8) | b2;
-        if (chan < 6) {
-          spektrum_channels[chan] = val;
-        }
-      }
-      spektrum_received = true;
-      last_spektrum_time = millis();
-      sendSpektrumToPC();
+  } else {
+    last_avail_time = millis();
+    if (in_gap) {
       packet_idx = 0;
+      in_gap = false;
+    }
+
+    while (Serial1.available() > 0 && packet_idx < 16) {
+      packet[packet_idx++] = Serial1.read();
+
+      if (packet_idx == 16) {
+        for (int i = 1; i < 8; ++i) {
+          uint8_t b1 = packet[2 * i];
+          uint8_t b2 = packet[2 * i + 1];
+          uint8_t chan = (b1 >> 3) & 0x0F;
+          uint16_t val = ((b1 & 0x07) << 8) | b2;
+          if (chan < 6) {
+            spektrum_channels[chan] = val;
+          }
+        }
+        spektrum_received = true;
+        last_spektrum_time = millis();
+        sendSpektrumToPC();
+        packet_idx = 0;
+      }
     }
   }
 }
