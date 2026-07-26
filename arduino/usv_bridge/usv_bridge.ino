@@ -33,9 +33,9 @@ void loop() {
   readSpektrum();
   sendTelemetry();
 
-  // Watchdog heartbeat (toggles Pin 7 at 10 Hz)
+  // Watchdog heartbeat (toggles Pin 7 at 1 Hz)
   unsigned long now = millis();
-  if (now - last_watchdog_time >= 100) {
+  if (now - last_watchdog_time >= 1000) {
     last_watchdog_time = now;
     watchdog_state = !watchdog_state;
     digitalWrite(7, watchdog_state ? HIGH : LOW);
@@ -91,7 +91,6 @@ void readSerialPC() {
 
 void processPCPacket(uint8_t type, uint8_t *data, uint8_t len) {
   if (type == 0x00 && len == 8) {
-    // We ignore motor commands for now
     last_cmd_time = millis();
   } else if (type == 0xF0) {
     const char *sig = "PLADYPOS_BRIDGE";
@@ -110,38 +109,31 @@ void processPCPacket(uint8_t type, uint8_t *data, uint8_t len) {
 void readSpektrum() {
   static uint8_t packet[16];
   static uint8_t packet_idx = 0;
-  static unsigned long last_avail_time = 0;
-  static bool in_gap = false;
+  static unsigned long last_byte_time = 0;
 
-  if (Serial1.available() == 0) {
-    if (millis() - last_avail_time > 4) {
-      in_gap = true;
-    }
-  } else {
-    last_avail_time = millis();
-    if (in_gap) {
+  while (Serial1.available() > 0) {
+    unsigned long now = millis();
+    if (now - last_byte_time > 8) {
       packet_idx = 0;
-      in_gap = false;
     }
+    last_byte_time = now;
 
-    while (Serial1.available() > 0 && packet_idx < 16) {
-      packet[packet_idx++] = Serial1.read();
+    packet[packet_idx++] = Serial1.read();
 
-      if (packet_idx == 16) {
-        for (int i = 1; i < 8; ++i) {
-          uint8_t b1 = packet[2 * i];
-          uint8_t b2 = packet[2 * i + 1];
-          uint8_t chan = (b1 >> 3) & 0x0F;
-          uint16_t val = ((b1 & 0x07) << 8) | b2;
-          if (chan < 6) {
-            spektrum_channels[chan] = val;
-          }
+    if (packet_idx == 16) {
+      for (int i = 1; i < 8; ++i) {
+        uint8_t b1 = packet[2 * i];
+        uint8_t b2 = packet[2 * i + 1];
+        uint8_t chan = (b1 >> 3) & 0x0F;
+        uint16_t val = ((b1 & 0x07) << 8) | b2;
+        if (chan < 6) {
+          spektrum_channels[chan] = val;
         }
-        spektrum_received = true;
-        last_spektrum_time = millis();
-        sendSpektrumToPC();
-        packet_idx = 0;
       }
+      spektrum_received = true;
+      last_spektrum_time = millis();
+      sendSpektrumToPC();
+      packet_idx = 0;
     }
   }
 }
