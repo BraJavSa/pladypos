@@ -179,7 +179,7 @@ void readSpektrum() {
   static uint8_t packet_idx = 0;
   static unsigned long last_byte_time = 0;
 
-  if (Serial1.available() > 0) {
+  while (Serial1.available() > 0) {
     unsigned long now = millis();
     if (now - last_byte_time > 5) {
       packet_idx = 0;
