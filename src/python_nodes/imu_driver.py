@@ -119,9 +119,13 @@ class IMUDriver(Node):
                 if ',' in line:
                     parts = line.split(',')
                     if len(parts) >= 10:
-                        acc = [float(x) for x in parts[1:4]]
-                        gyro = [float(x) for x in parts[4:7]]
-                        mag = [float(x) for x in parts[7:10]]
+                        try:
+                            acc = [float(x) for x in parts[1:4]]
+                            gyro = [float(x) for x in parts[4:7]]
+                            mag = [float(x) for x in parts[7:10]]
+                        except ValueError as ve:
+                            self.get_logger().debug(f"Skipping corrupt IMU line: {line} ({ve})")
+                            return
 
                         imu_msg = Imu()
                         imu_msg.header.stamp = self.get_clock().now().to_msg()
