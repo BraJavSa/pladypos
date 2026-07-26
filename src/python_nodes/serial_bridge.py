@@ -152,6 +152,9 @@ class SerialBridge(Node):
         payload_len = 0
         payload = bytearray()
 
+        byte_buffer = bytearray()
+        byte_buffer_idx = 0
+
         while rclpy.ok() and self.running:
             try:
                 with self.lock:
@@ -165,14 +168,22 @@ class SerialBridge(Node):
                     time.sleep(2.0)
                     continue
 
-                b = b''
-                with self.lock:
-                    if self.ser and self.ser.is_open:
-                        b = self.ser.read(1)
-                
-                if not b:
+                if byte_buffer_idx >= len(byte_buffer):
+                    with self.lock:
+                        if self.ser and self.ser.is_open:
+                            in_waiting = self.ser.in_waiting
+                            if in_waiting > 0:
+                                byte_buffer = self.ser.read(in_waiting)
+                            else:
+                                byte_buffer = self.ser.read(1)
+                            byte_buffer_idx = 0
+                        else:
+                            byte_buffer = b''
+
+                if not byte_buffer:
                     continue
-                val = b[0]
+                val = byte_buffer[byte_buffer_idx]
+                byte_buffer_idx += 1
 
                 if state == 0:
                     if val == 0xFF:
@@ -201,6 +212,8 @@ class SerialBridge(Node):
 
             except Exception as e:
                 self.get_logger().warn(f"Serial read error: {e}")
+                byte_buffer = b''
+                byte_buffer_idx = 0
                 with self.lock:
                     if self.ser:
                         try:
