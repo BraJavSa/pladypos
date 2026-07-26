@@ -110,6 +110,10 @@ def generate_launch_description():
             'depth_method': 'default',
             'reg_method': 'default'
         }],
+        remappings=[
+            ('/kinect2/sd/image_color_rect', f'/{ns}/camera/image_raw'),
+            ('/kinect2/sd/image_color_rect/compressed', f'/{ns}/camera/image_raw/compressed'),
+        ],
         output='screen'
     )
 
