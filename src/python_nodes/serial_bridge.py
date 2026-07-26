@@ -61,7 +61,8 @@ class SerialBridge(Node):
                         self.ser.close()
                     except Exception:
                         pass
-                self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
+                # Set timeout to 0 (non-blocking) to prevent blocking inside the thread lock
+                self.ser = serial.Serial(self.port, self.baud, timeout=0)
                 self.ser.reset_input_buffer()
                 self.ser.reset_output_buffer()
                 self.get_logger().info(f"Connected to Arduino on {self.port} at {self.baud} baud.")
@@ -106,11 +107,11 @@ class SerialBridge(Node):
             if 'razor' in name:
                 continue
             try:
-                ser = serial.Serial(port, self.baud, timeout=0.15)
+                ser = serial.Serial(port, self.baud, timeout=0.05)
                 ser.reset_input_buffer()
                 ser.reset_output_buffer()
                 ser.write(bytearray([0xFF, 0xFF, 0xF0, 0x00, 0xF0]))
-                time.sleep(0.05)
+                time.sleep(0.02)
                 buf = ser.read(30)
                 if b"PLADYPOS_BRIDGE" in buf:
                     ser.close()
@@ -176,8 +177,6 @@ class SerialBridge(Node):
                         if self.ser and self.ser.is_open:
                             in_waiting = self.ser.in_waiting
                             if in_waiting > 100:
-                                # We are lagging behind (more than 6 packets queued). 
-                                # Clear the buffer to restore real-time latency.
                                 self.ser.reset_input_buffer()
                                 byte_buffer = b''
                                 byte_buffer_idx = 0
@@ -185,10 +184,16 @@ class SerialBridge(Node):
                                 byte_buffer = self.ser.read(in_waiting)
                                 byte_buffer_idx = 0
                             else:
-                                byte_buffer = self.ser.read(1)
+                                byte_buffer = b''
                                 byte_buffer_idx = 0
                         else:
                             byte_buffer = b''
+                            byte_buffer_idx = 0
+                    
+                    # Sleep outside of the lock to let other threads write (non-blocking)
+                    if not byte_buffer:
+                        time.sleep(0.005)
+                        continue
 
                 if not byte_buffer:
                     continue

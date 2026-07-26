@@ -103,6 +103,6 @@ def generate_launch_description():
         port_arduino_arg,
         imu_driver_node,
         serial_bridge_node,
-        teleop_mixer_node,
+        # teleop_mixer_node,
         filter_start_event
     ])

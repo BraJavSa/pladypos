@@ -24,9 +24,9 @@ void setup() {
 }
 
 void loop() {
-  readSerialPC();
+  // readSerialPC();    // Disabled for diagnostic test
   readSpektrum();
-  sendTelemetry();
+  // sendTelemetry();   // Disabled for diagnostic test
 
   // Watchdog heartbeat (toggles Pin 7 at 1 Hz)
   unsigned long now = millis();
