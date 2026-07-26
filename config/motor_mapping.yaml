@@ -1,0 +1,5 @@
+motor_mapping:
+  1: Front Right (FR)
+  2: Front Left (FL)
+  3: Back Right (BR)
+  4: Back Left (BL)
