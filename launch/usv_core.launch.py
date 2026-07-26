@@ -90,6 +90,20 @@ def generate_launch_description():
         ]
     )
 
+    camera_driver_node = Node(
+        package='pladypos',
+        executable='camera_driver.py',
+        name='camera_driver_node',
+        namespace=ns,
+        output='screen',
+        parameters=[{
+            'video_device': '/dev/video0',
+            'frame_rate': 15.0,
+            'image_width': 640,
+            'image_height': 480
+        }]
+    )
+
     filter_start_event = RegisterEventHandler(
         OnProcessStart(
             target_action=imu_driver_node,
@@ -104,5 +118,6 @@ def generate_launch_description():
         imu_driver_node,
         serial_bridge_node,
         teleop_mixer_node,
+        camera_driver_node,
         filter_start_event
     ])
