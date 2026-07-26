@@ -25,6 +25,7 @@ class SerialBridge(Node):
         self.telemetry_pub = self.create_publisher(Float32, 'telemetry', 10)
         self.counter_pub = self.create_publisher(Float32, 'test_counter', 10)
         self.freq_pub = self.create_publisher(Float32, 'radio_frequency', 10)
+        self.feedback_pub = self.create_publisher(Int16MultiArray, 'motor_feedback', 10)
 
         self.pwm_sub = self.create_subscription(
             Float32MultiArray,
@@ -269,6 +270,13 @@ class SerialBridge(Node):
                 msg = Float32()
                 msg.data = float(val)
                 self.counter_pub.publish(msg)
+
+        elif p_type == 4:
+            if len(payload) == 8:
+                pwms = struct.unpack('<4H', payload)
+                msg = Int16MultiArray()
+                msg.data = list(pwms)
+                self.feedback_pub.publish(msg)
 
     def destroy_node(self):
         self.running = False
