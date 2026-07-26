@@ -62,13 +62,21 @@ try:
             elif state == 5:
                 checksum = (payload_type + payload_len + sum(payload)) & 0xFF
                 if checksum == val:
-                    if payload_type == 0x01 and len(payload) == 12:
-                        channels = struct.unpack('<6H', payload)
-                        now = time.time()
-                        if now - last_print > 0.05:
-                            last_print = now
-                            sys.stdout.write(f"\rCh1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]} | Ch4: {channels[3]}    ")
-                            sys.stdout.flush()
+                    now = time.time()
+                    if now - last_print > 0.05:
+                        last_print = now
+                        if payload_type == 0x01:
+                            channels = struct.unpack('<6H', payload)
+                            sys.stdout.write(f"\r[Radio 0x01] Ch1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]}      ")
+                        elif payload_type == 0x02:
+                            voltage = struct.unpack('<f', payload)[0]
+                            sys.stdout.write(f"\r[Telemetry 0x02] Voltage: {voltage:.2f} V                      ")
+                        elif payload_type == 0x03:
+                            counter = struct.unpack('<H', payload)[0]
+                            sys.stdout.write(f"\r[Counter 0x03] Val: {counter}                                  ")
+                        else:
+                            sys.stdout.write(f"\r[Packet {payload_type:#x}] Len: {payload_len}                  ")
+                        sys.stdout.flush()
                 state = 0
 except KeyboardInterrupt:
     print("\nSaliendo...")
