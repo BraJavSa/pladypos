@@ -16,46 +16,68 @@ sudo apt install -y ros-dev-tools
 ```
 
 ### 1.2 Install Python & ROS 2 Dependencies
-The camera streaming and motor mapping nodes require OpenCV, cv_bridge, and YAML. Run this on both the GCS and the USV:
+The camera streaming, point cloud, and motor mapping nodes require OpenCV, cv_bridge, Boost, and YAML. Run this on both the GCS and the USV:
 ```bash
-sudo apt install -y python3-opencv python3-yaml python3-numpy ros-jazzy-cv-bridge ros-jazzy-image-transport ros-jazzy-camera-info-manager ros-jazzy-depth-image-proc
+sudo apt update
+sudo apt install -y python3-opencv python3-yaml python3-numpy libboost-all-dev \
+  ros-jazzy-cv-bridge ros-jazzy-image-transport ros-jazzy-camera-info-manager \
+  ros-jazzy-depth-image-proc ros-jazzy-compressed-depth-image-transport \
+  ros-jazzy-compressed-image-transport
 ```
 
 ---
 
-## 2. Xbox 360 Kinect (Kinect v1) Installation on USV
+## 2. Xbox One Kinect (Kinect v2) Installation on USV
 
-For full RGB-D camera and 3D PointCloud capabilities on the USV, the community-maintained driver `kinect_ros2` is used.
+For full RGB-D camera and 3D PointCloud capabilities on the USV, the community-maintained driver `kinect2_ros2` is used.
 
-### 2.1 Build and Install `libfreenect` from Source
-Due to the lack of CMake configuration files in the standard `apt` package for `libfreenect` on Ubuntu 24.04, it must be compiled from source on the USV:
+### 2.1 Build and Install `libfreenect2` from Source
+Due to the lack of prepackaged binaries for `libfreenect2` on Ubuntu 24.04, it must be compiled from source on the USV:
 ```bash
-# Install compilation and USB dependencies
+# 1. Install compilation and USB dependencies
 sudo apt update
-sudo apt install -y git cmake pkg-config build-essential libusb-1.0-0-dev freeglut3-dev
+sudo apt install -y build-essential cmake pkg-config libusb-1.0-0-dev libturbojpeg0-dev libtool autoconf libudev-dev
 
-# Clone and compile libfreenect
+# 2. Clone and compile libfreenect2
 cd ~
-git clone https://github.com/OpenKinect/libfreenect.git
-cd libfreenect
+git clone https://github.com/OpenKinect/libfreenect2.git
+cd libfreenect2
 mkdir build && cd build
-cmake .. -DBUILD_EXAMPLES=ON
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr
 make -j$(nproc)
 sudo make install
-sudo ldconfig
 ```
 
-### 2.2 Clone the `kinect_ros2` Package
-Clone the repository into the USV workspace (`~/ros2usv_ws`):
+### 2.2 Configure USB Permissions & Blacklist Conflicting Kernel Modules
+The default Linux kernel driver `gspca_kinect` conflicts with `libfreenect2` by claiming the USB device. We must blacklist it and set up permissions on the USV:
 ```bash
+# 1. Install the Kinect v2 udev rules
+sudo cp ~/libfreenect2/platform/linux/udev/90-kinect2.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# 2. Unload currently loaded conflicting kernel modules
+sudo modprobe -r gspca_kinect gspca_main
+
+# 3. Permanently blacklist conflicting modules
+echo "blacklist gspca_kinect" | sudo tee -a /etc/modprobe.d/blacklist.conf
+echo "blacklist gspca_main" | sudo tee -a /etc/modprobe.d/blacklist.conf
+```
+*Note: Unplug and replug the Kinect v2's USB 3.0 connector to reload permissions.*
+
+### 2.3 Clone and Patch `kinect2_ros2`
+Clone the driver into the USV workspace (`~/ros2usv_ws`) and apply compatibility patches for ROS 2 Jazzy:
+```bash
+# 1. Clone the driver
 cd ~/ros2usv_ws/src
-git clone https://github.com/fadlio/kinect_ros2.git
-```
+git clone https://github.com/YuLiHN/kinect2_ros2.git
 
-### 2.3 Patch for ROS 2 Jazzy compatibility
-In ROS 2 Jazzy, `cv_bridge.h` is removed in favor of `cv_bridge.hpp`. Run the following `sed` patch on the USV before compiling:
-```bash
-find ~/ros2usv_ws/src/kinect_ros2 -type f -exec sed -i 's/cv_bridge\/cv_bridge.h/cv_bridge\/cv_bridge.hpp/g' {} +
+# 2. Patch: Replace deprecated cv_bridge.h with cv_bridge.hpp
+find ~/ros2usv_ws/src/kinect2_ros2 -type f -exec sed -i 's/cv_bridge\/cv_bridge.h/cv_bridge\/cv_bridge.hpp/g' {} +
+
+# 3. Patch: Set 'sensor' serial parameter to an empty string '' in kinect2_bridge.launch.py.
+# This prevents ROS 2 YAML type parsing issues (interpreting numeric serials with '8' or '9' as double/floats)
+# and enables automatic plug-and-play detection of the first connected camera.
+sed -i "s/'sensor': '004436460547'/'sensor': ''/g" ~/ros2usv_ws/src/kinect2_ros2/kinect2_bridge/launch/kinect2_bridge.launch.py
 ```
 
 ### 2.4 Compile the Workspace on the USV
@@ -116,10 +138,10 @@ The control pipeline is split between the GCS (Ground Control Station) and the U
    ```bash
    ros2 launch pladypos usv_core.launch.py
    ```
-2. **Launch Kinect Driver (RGB + Depth + 3D PointCloud):**
+2. **Launch Kinect v2 Driver (RGB + Depth + 3D PointCloud):**
    In a separate terminal on the USV:
    ```bash
-   ros2 launch kinect_ros2 pointcloud.launch.py
+   ros2 launch kinect2_bridge kinect2_bridge.launch.py
    ```
 
 ### 4.2 On the GCS (PC with Joystick)
@@ -144,12 +166,12 @@ This utility will pulse each motor at 30% thrust for 4 seconds, ask you to selec
   ```bash
   ros2 run rqt_image_view rqt_image_view
   ```
-  Select the topic `/kinect/rgb/image_raw/compressed` or `/kinect/depth/image_raw` from the dropdown menu.
+  Select the topic `/kinect2/qhd/image_color_rect` or `/kinect2/qhd/image_depth_rect`.
 * **3D PointCloud:** To view the 3D depth point cloud, open a terminal on your GCS and run:
   ```bash
   rviz2
   ```
-  Add a `PointCloud2` display and subscribe to `/kinect/depth/color/points`.
+  Add a `PointCloud2` display, subscribe to `/kinect2/qhd/points`, and set the **Fixed Frame** to `kinect2_link`.
 
 ---
 
