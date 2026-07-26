@@ -24,6 +24,7 @@ class SerialBridge(Node):
         self.joy_pub = self.create_publisher(Joy, 'joy', 10)
         self.telemetry_pub = self.create_publisher(Float32, 'telemetry', 10)
         self.counter_pub = self.create_publisher(Float32, 'test_counter', 10)
+        self.freq_pub = self.create_publisher(Float32, 'radio_frequency', 10)
 
         self.pwm_sub = self.create_subscription(
             Float32MultiArray,
@@ -240,8 +241,10 @@ class SerialBridge(Node):
 
     def process_packet(self, p_type, payload):
         if p_type == 1:
-            if len(payload) == 12:
-                channels = list(struct.unpack('<6H', payload))
+            if len(payload) == 14:
+                data_unpacked = struct.unpack('<7H', payload)
+                channels = list(data_unpacked[:6])
+                freq = float(data_unpacked[6])
                 
                 sp_msg = Int16MultiArray()
                 sp_msg.data = channels
@@ -257,6 +260,10 @@ class SerialBridge(Node):
                     0.0, 0.0, 0.0
                 ]
                 self.joy_pub.publish(joy_msg)
+
+                freq_msg = Float32()
+                freq_msg.data = freq
+                self.freq_pub.publish(freq_msg)
 
         elif p_type == 2:
             if len(payload) == 4:

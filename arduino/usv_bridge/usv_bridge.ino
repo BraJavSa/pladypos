@@ -1,8 +1,8 @@
 uint16_t spektrum_channels[6] = {1024, 1024, 1024, 1024, 1024, 1024};
+volatile uint16_t spektrum_rx_count = 0;
+
 unsigned long last_cmd_time = 0;
-unsigned long last_spektrum_time = 0;
 unsigned long last_telemetry_time = 0;
-bool spektrum_received = false;
 
 // Watchdog heartbeat variables
 unsigned long last_watchdog_time = 0;
@@ -37,74 +37,6 @@ void loop() {
   }
 }
 
-void readSerialPC() {
-  static int state = 0;
-  static uint8_t p_type = 0;
-  static uint8_t p_len = 0;
-  static uint8_t payload[32];
-  static uint8_t payload_idx = 0;
-
-  while (Serial.available() > 0) {
-    uint8_t val = Serial.read();
-
-    if (state == 0) {
-      if (val == 0xFF)
-        state = 1;
-    } else if (state == 1) {
-      if (val == 0xFF)
-        state = 2;
-      else
-        state = 0;
-    } else if (state == 2) {
-      p_type = val;
-      state = 3;
-    } else if (state == 3) {
-      p_len = val;
-      payload_idx = 0;
-      if (p_len > sizeof(payload)) {
-        state = 0;
-      } else {
-        state = 4;
-      }
-    } else if (state == 4) {
-      payload[payload_idx++] = val;
-      if (payload_idx == p_len) {
-        state = 5;
-      }
-    } else if (state == 5) {
-      uint8_t checksum = p_type + p_len;
-      for (uint8_t i = 0; i < p_len; ++i) {
-        checksum += payload[i];
-      }
-      if (checksum == val) {
-        processPCPacket(p_type, payload, p_len);
-      }
-      state = 0;
-    }
-  }
-}
-
-void processPCPacket(uint8_t type, uint8_t *data, uint8_t len) {
-  if (type == 0x00 && len == 8) {
-    last_cmd_time = millis();
-  } else if (type == 0xF0) {
-    const char *sig = "PLADYPOS_BRIDGE";
-    uint8_t sig_len = 15;
-    uint8_t header[4] = {0xFF, 0xFF, 0xF0, sig_len};
-    uint8_t checksum = 0xF0 + sig_len;
-    
-    // Check if USB buffer has space to avoid blocking
-    if (Serial.availableForWrite() >= 20) {
-      Serial.write(header, 4);
-      for (uint8_t i = 0; i < sig_len; ++i) {
-        checksum += sig[i];
-        Serial.write(sig[i]);
-      }
-      Serial.write(checksum);
-    }
-  }
-}
-
 void readSpektrum() {
   static uint8_t packet[16];
   static uint8_t packet_idx = 0;
@@ -129,27 +61,27 @@ void readSpektrum() {
           spektrum_channels[chan] = val;
         }
       }
-      spektrum_received = true;
-      last_spektrum_time = millis();
-      
-      // Throttle sending Spektrum data to PC to 40 Hz (every 25 ms)
-      static unsigned long last_spektrum_pc_time = 0;
-      if (millis() - last_spektrum_pc_time >= 25) {
-        last_spektrum_pc_time = millis();
-        sendSpektrumToPC();
-      }
-      
+      spektrum_rx_count++;
       packet_idx = 0;
     }
   }
+
+  // Throttle sending Spektrum data to PC to 10 Hz (every 100 ms)
+  static unsigned long last_spektrum_pc_time = 0;
+  unsigned long now = millis();
+  if (now - last_spektrum_pc_time >= 100) {
+    last_spektrum_pc_time = now;
+    uint16_t freq = spektrum_rx_count * 10;
+    spektrum_rx_count = 0;
+    sendSpektrumToPC(freq);
+  }
 }
 
-void sendSpektrumToPC() {
-  // Size: 4 bytes header + 12 bytes payload + 1 byte checksum = 17 bytes
-  // Check if USB TX buffer has enough space before writing to prevent blocking the CPU
-  if (Serial.availableForWrite() >= 17) {
-    uint8_t header[4] = {0xFF, 0xFF, 0x01, 12};
-    uint8_t checksum = 0x01 + 12;
+void sendSpektrumToPC(uint16_t freq) {
+  // Size: 4 bytes header + 14 bytes payload (12 channels + 2 freq) + 1 checksum = 19 bytes
+  if (Serial.availableForWrite() >= 19) {
+    uint8_t header[4] = {0xFF, 0xFF, 0x01, 14};
+    uint8_t checksum = 0x01 + 14;
 
     Serial.write(header, 4);
 
@@ -158,32 +90,12 @@ void sendSpektrumToPC() {
       checksum += data_ptr[i];
       Serial.write(data_ptr[i]);
     }
-    Serial.write(checksum);
-  }
-}
 
-void sendTelemetry() {
-  unsigned long now = millis();
-  if (now - last_telemetry_time < 200) {
-    return;
-  }
-  last_telemetry_time = now;
+    uint8_t *freq_ptr = (uint8_t *)&freq;
+    checksum += freq_ptr[0] + freq_ptr[1];
+    Serial.write(freq_ptr[0]);
+    Serial.write(freq_ptr[1]);
 
-  // Size: 4 bytes header + 4 bytes payload + 1 byte checksum = 9 bytes
-  // Check if USB TX buffer has enough space to prevent blocking
-  if (Serial.availableForWrite() >= 9) {
-    float voltage = analogRead(A0) * (5.0 / 1023.0) * 4.0;
-
-    uint8_t header[4] = {0xFF, 0xFF, 0x02, 4};
-    uint8_t checksum = 0x02 + 4;
-
-    Serial.write(header, 4);
-
-    uint8_t *data_ptr = (uint8_t *)&voltage;
-    for (int i = 0; i < 4; ++i) {
-      checksum += data_ptr[i];
-      Serial.write(data_ptr[i]);
-    }
     Serial.write(checksum);
   }
 }

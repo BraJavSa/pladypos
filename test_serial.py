@@ -66,8 +66,13 @@ try:
                     if now - last_print > 0.05:
                         last_print = now
                         if payload_type == 0x01:
-                            channels = struct.unpack('<6H', payload)
-                            sys.stdout.write(f"\r[Radio 0x01] Ch1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]}      ")
+                            if len(payload) == 14:
+                                data_unpacked = struct.unpack('<7H', payload)
+                                channels = data_unpacked[:6]
+                                freq = data_unpacked[6]
+                                sys.stdout.write(f"\r[Radio 0x01] Ch1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]} | Freq: {freq} Hz      ")
+                            else:
+                                sys.stdout.write(f"\r[Radio 0x01] Got unexpected len {len(payload)}                      ")
                         elif payload_type == 0x02:
                             voltage = struct.unpack('<f', payload)[0]
                             sys.stdout.write(f"\r[Telemetry 0x02] Voltage: {voltage:.2f} V                      ")
