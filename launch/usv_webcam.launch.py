@@ -92,25 +92,19 @@ def generate_launch_description():
         ]
     )
 
-    # Launch Kinect v2 Bridge Node directly in 2D / Webcam mode (No PointCloud container)
-    kinect_webcam_node = Node(
-        package='kinect2_bridge',
-        executable='kinect2_bridge',
-        name='kinect2_bridge',
-        emulate_tty=True,
+    # Launch standard camera driver node (webcam mode)
+    camera_webcam_node = Node(
+        package='pladypos',
+        executable='camera_driver.py',
+        name='camera_driver_node',
+        namespace=ns,
+        output='screen',
         parameters=[{
-            'base_name': 'kinect2',
-            'sensor': '',
-            'publish_tf': False,        # Disable transform calculations
-            'worker_threads': 2,        # Restrict threads to save CPU
-            'fps_limit': -1.0,
-            'use_png': False,
-            'jpeg_quality': 85,         # Compressed JPEG stream for WiFi efficiency
-            'png_level': 1,
-            'depth_method': 'default',
-            'reg_method': 'default'
-        }],
-        output='screen'
+            'video_device': '/dev/video0',
+            'frame_rate': 15.0,
+            'image_width': 640,
+            'image_height': 480
+        }]
     )
 
     filter_start_event = RegisterEventHandler(
@@ -127,6 +121,6 @@ def generate_launch_description():
         imu_driver_node,
         serial_bridge_node,
         teleop_mixer_node,
-        kinect_webcam_node,
+        camera_webcam_node,
         filter_start_event
     ])
