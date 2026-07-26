@@ -23,6 +23,7 @@ class SerialBridge(Node):
         self.spektrum_pub = self.create_publisher(Int16MultiArray, 'spektrum', 10)
         self.joy_pub = self.create_publisher(Joy, 'joy', 10)
         self.telemetry_pub = self.create_publisher(Float32, 'telemetry', 10)
+        self.counter_pub = self.create_publisher(Float32, 'test_counter', 10)
 
         self.pwm_sub = self.create_subscription(
             Float32MultiArray,
@@ -258,6 +259,13 @@ class SerialBridge(Node):
                 tel_msg = Float32()
                 tel_msg.data = voltage
                 self.telemetry_pub.publish(tel_msg)
+
+        elif p_type == 3:
+            if len(payload) == 2:
+                val = struct.unpack('<H', payload)[0]
+                msg = Float32()
+                msg.data = float(val)
+                self.counter_pub.publish(msg)
 
     def destroy_node(self):
         self.running = False

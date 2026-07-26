@@ -1,13 +1,5 @@
-const int DRIVER_NUM = 4;
-const int MOTOR_BASE = 1500;
-const int MAX_IDLE = 1000;
-uint8_t motorPWM[DRIVER_NUM] = {13, 12, 11, 10};
-
-uint16_t spektrum_channels[6] = {1024, 1024, 1024, 1024, 1024, 1024};
 unsigned long last_cmd_time = 0;
-unsigned long last_spektrum_time = 0;
 unsigned long last_telemetry_time = 0;
-bool spektrum_received = false;
 
 // Watchdog heartbeat variables
 unsigned long last_watchdog_time = 0;
@@ -30,7 +22,6 @@ void setup() {
 
 void loop() {
   readSerialPC();
-  readSpektrum();
   sendTelemetry();
 
   // Watchdog heartbeat (toggles Pin 7 at 1 Hz)
@@ -39,6 +30,18 @@ void loop() {
     last_watchdog_time = now;
     watchdog_state = !watchdog_state;
     digitalWrite(7, watchdog_state ? HIGH : LOW);
+  }
+
+  // Send a counter from 1 to 10000 at 10 Hz
+  static uint16_t counter = 1;
+  static unsigned long last_counter_time = 0;
+  if (now - last_counter_time >= 100) {
+    last_counter_time = now;
+    sendCounterToPC(counter);
+    counter++;
+    if (counter > 10000) {
+      counter = 1;
+    }
   }
 }
 
@@ -106,56 +109,16 @@ void processPCPacket(uint8_t type, uint8_t *data, uint8_t len) {
   }
 }
 
-void readSpektrum() {
-  static uint8_t packet[16];
-  static uint8_t packet_idx = 0;
-  static unsigned long last_byte_time = 0;
-
-  while (Serial1.available() > 0) {
-    unsigned long now = millis();
-    if (now - last_byte_time > 8) {
-      packet_idx = 0;
-    }
-    last_byte_time = now;
-
-    packet[packet_idx++] = Serial1.read();
-
-    if (packet_idx == 16) {
-      for (int i = 1; i < 8; ++i) {
-        uint8_t b1 = packet[2 * i];
-        uint8_t b2 = packet[2 * i + 1];
-        uint8_t chan = (b1 >> 3) & 0x0F;
-        uint16_t val = ((b1 & 0x07) << 8) | b2;
-        if (chan < 6) {
-          spektrum_channels[chan] = val;
-        }
-      }
-      spektrum_received = true;
-      last_spektrum_time = millis();
-      
-      // Throttle sending Spektrum data to PC to 10 Hz (every 100 ms)
-      static unsigned long last_spektrum_pc_time = 0;
-      if (millis() - last_spektrum_pc_time >= 100) {
-        last_spektrum_pc_time = millis();
-        sendSpektrumToPC();
-      }
-      
-      packet_idx = 0;
-    }
-  }
-}
-
-void sendSpektrumToPC() {
-  uint8_t header[4] = {0xFF, 0xFF, 0x01, 12};
-  uint8_t checksum = 0x01 + 12;
+void sendCounterToPC(uint16_t val) {
+  uint8_t header[4] = {0xFF, 0xFF, 0x03, 2};
+  uint8_t checksum = 0x03 + 2;
 
   Serial.write(header, 4);
 
-  uint8_t *data_ptr = (uint8_t *)spektrum_channels;
-  for (int i = 0; i < 12; ++i) {
-    checksum += data_ptr[i];
-    Serial.write(data_ptr[i]);
-  }
+  uint8_t *data_ptr = (uint8_t *)&val;
+  checksum += data_ptr[0] + data_ptr[1];
+  Serial.write(data_ptr[0]);
+  Serial.write(data_ptr[1]);
   Serial.write(checksum);
 }
 
