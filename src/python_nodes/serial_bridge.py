@@ -61,6 +61,8 @@ class SerialBridge(Node):
                     except Exception:
                         pass
                 self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
+                self.ser.reset_input_buffer()
+                self.ser.reset_output_buffer()
                 self.get_logger().info(f"Connected to Arduino on {self.port} at {self.baud} baud.")
             except Exception as e:
                 self.get_logger().warn(f"Could not open serial port {self.port}: {e}")
@@ -172,11 +174,18 @@ class SerialBridge(Node):
                     with self.lock:
                         if self.ser and self.ser.is_open:
                             in_waiting = self.ser.in_waiting
-                            if in_waiting > 0:
+                            if in_waiting > 100:
+                                # We are lagging behind (more than 6 packets queued). 
+                                # Clear the buffer to restore real-time latency.
+                                self.ser.reset_input_buffer()
+                                byte_buffer = b''
+                                byte_buffer_idx = 0
+                            elif in_waiting > 0:
                                 byte_buffer = self.ser.read(in_waiting)
+                                byte_buffer_idx = 0
                             else:
                                 byte_buffer = self.ser.read(1)
-                            byte_buffer_idx = 0
+                                byte_buffer_idx = 0
                         else:
                             byte_buffer = b''
 
