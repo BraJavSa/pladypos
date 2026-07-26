@@ -134,15 +134,16 @@ arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:avr:micro src/pladypos/arduino
 The control pipeline is split between the GCS (Ground Control Station) and the USV (Barco) for performance and safety.
 
 ### 4.1 On the USV (Barco)
-1. **Launch Core Drivers (IMU, Arduino Bridge):**
-   ```bash
-   ros2 launch pladypos usv_core.launch.py
-   ```
-2. **Launch Kinect v2 Driver (RGB + Depth + 3D PointCloud):**
-   In a separate terminal on the USV:
-   ```bash
-   ros2 launch kinect2_bridge kinect2_bridge.launch.py
-   ```
+Choose one of the following unified launcher options:
+
+* **Option A: Full RGB-D & 3D PointCloud Mode** (Vehicle controls + full 3D point cloud streaming):
+  ```bash
+  ros2 launch pladypos usv_kinect.launch.py
+  ```
+* **Option B: Webcam-Only Mode** (Vehicle controls + 2D color image streaming only; disables heavy depth/pointcloud processing to save CPU and Wi-Fi bandwidth):
+  ```bash
+  ros2 launch pladypos usv_webcam.launch.py
+  ```
 
 ### 4.2 On the GCS (PC with Joystick)
 Launches the physical joystick node:
