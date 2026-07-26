@@ -12,6 +12,8 @@ install(PROGRAMS
   src/python_nodes/imu_driver.py
   src/python_nodes/serial_bridge.py
   src/python_nodes/teleop_mixer.py
+  src/python_nodes/motor_mapper.py
+  src/python_nodes/camera_driver.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
