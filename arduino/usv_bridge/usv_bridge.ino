@@ -33,9 +33,9 @@ void loop() {
   readSpektrum();
   sendTelemetry();
 
-  // Watchdog heartbeat (toggles Pin 7 at 1 Hz)
+  // Watchdog heartbeat (toggles Pin 7 at 10 Hz)
   unsigned long now = millis();
-  if (now - last_watchdog_time >= 1000) {
+  if (now - last_watchdog_time >= 100) {
     last_watchdog_time = now;
     watchdog_state = !watchdog_state;
     digitalWrite(7, watchdog_state ? HIGH : LOW);
