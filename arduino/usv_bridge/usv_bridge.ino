@@ -132,7 +132,14 @@ void readSpektrum() {
       }
       spektrum_received = true;
       last_spektrum_time = millis();
-      sendSpektrumToPC();
+      
+      // Throttle sending Spektrum data to PC to 10 Hz (every 100 ms)
+      static unsigned long last_spektrum_pc_time = 0;
+      if (millis() - last_spektrum_pc_time >= 100) {
+        last_spektrum_pc_time = millis();
+        sendSpektrumToPC();
+      }
+      
       packet_idx = 0;
     }
   }
