@@ -152,13 +152,7 @@ class SerialBridge(Node):
                 threading.Thread(target=self.recover_serial, daemon=True).start()
 
     def receive_loop(self):
-        state = 0
-        payload_type = 0
-        payload_len = 0
-        payload = bytearray()
-
         byte_buffer = bytearray()
-        byte_buffer_idx = 0
 
         while rclpy.ok() and self.running:
             try:
@@ -173,63 +167,60 @@ class SerialBridge(Node):
                     time.sleep(2.0)
                     continue
 
-                if byte_buffer_idx >= len(byte_buffer):
-                    with self.lock:
-                        if self.ser and self.ser.is_open:
-                            in_waiting = self.ser.in_waiting
-                            if in_waiting > 100:
-                                self.ser.reset_input_buffer()
-                                byte_buffer = b''
-                                byte_buffer_idx = 0
-                            elif in_waiting > 0:
-                                byte_buffer = self.ser.read(in_waiting)
-                                byte_buffer_idx = 0
-                            else:
-                                byte_buffer = b''
-                                byte_buffer_idx = 0
+                with self.lock:
+                    if self.ser and self.ser.is_open:
+                        in_waiting = self.ser.in_waiting
+                        if in_waiting > 100:
+                            self.ser.reset_input_buffer()
+                            byte_buffer = bytearray()
+                        elif in_waiting > 0:
+                            byte_buffer.extend(self.ser.read(in_waiting))
                         else:
-                            byte_buffer = b''
-                            byte_buffer_idx = 0
-                    
-                    # Sleep outside of the lock to let other threads write (non-blocking)
-                    if not byte_buffer:
-                        time.sleep(0.005)
-                        continue
+                            if not byte_buffer:
+                                data = self.ser.read(1)
+                                if data:
+                                    byte_buffer.extend(data)
 
                 if not byte_buffer:
+                    time.sleep(0.005)
                     continue
-                val = byte_buffer[byte_buffer_idx]
-                byte_buffer_idx += 1
 
-                if state == 0:
-                    if val == 0xFF:
-                        state = 1
-                elif state == 1:
-                    if val == 0xFF:
-                        state = 2
-                    else:
-                        state = 0
-                elif state == 2:
-                    payload_type = val
-                    state = 3
-                elif state == 3:
-                    payload_len = val
-                    payload = bytearray()
-                    state = 4
-                elif state == 4:
-                    payload.append(val)
-                    if len(payload) == payload_len:
-                        state = 5
-                elif state == 5:
-                    checksum = (payload_type + payload_len + sum(payload)) & 0xFF
-                    if checksum == val:
+                while True:
+                    # Find the header sequence 0xFF 0xFF
+                    idx = byte_buffer.find(b'\xFF\xFF')
+                    if idx == -1:
+                        # Keep the last byte if it is 0xFF, discard rest
+                        if len(byte_buffer) > 0 and byte_buffer[-1] == 0xFF:
+                            byte_buffer = byte_buffer[-1:]
+                        else:
+                            byte_buffer = bytearray()
+                        break
+                    
+                    if idx + 4 > len(byte_buffer):
+                        byte_buffer = byte_buffer[idx:]
+                        break
+
+                    payload_type = byte_buffer[idx + 2]
+                    payload_len = byte_buffer[idx + 3]
+                    
+                    total_len = idx + 4 + payload_len + 1
+                    if total_len > len(byte_buffer):
+                        byte_buffer = byte_buffer[idx:]
+                        break
+
+                    payload = byte_buffer[idx + 4 : idx + 4 + payload_len]
+                    checksum_val = byte_buffer[idx + 4 + payload_len]
+
+                    expected = (payload_type + payload_len + sum(payload)) & 0xFF
+                    if expected == checksum_val:
                         self.process_packet(payload_type, payload)
-                    state = 0
+                        byte_buffer = byte_buffer[total_len:]
+                    else:
+                        byte_buffer = byte_buffer[idx + 1:]
 
             except Exception as e:
                 self.get_logger().warn(f"Serial read error: {e}")
-                byte_buffer = b''
-                byte_buffer_idx = 0
+                byte_buffer = bytearray()
                 with self.lock:
                     if self.ser:
                         try:
