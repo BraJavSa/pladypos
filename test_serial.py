@@ -24,49 +24,52 @@ print("Leyendo datos... Mueve los controles de la radio. Presiona Ctrl+C para sa
 last_print = 0
 
 try:
+    byte_buffer = bytearray()
     while True:
-        if ser.in_waiting > 100:
+        in_waiting = ser.in_waiting
+        if in_waiting > 100:
             ser.reset_input_buffer()
-            payload = bytearray()
+            byte_buffer = bytearray()
             state = 0
+            time.sleep(0.01)
             continue
-            
-        b = ser.read(1)
-        if not b:
-            continue
-        val = b[0]
+        elif in_waiting > 0:
+            byte_buffer.extend(ser.read(in_waiting))
+        else:
+            byte_buffer.extend(ser.read(1))
 
-        if state == 0:
-            if val == 0xFF:
-                state = 1
-        elif state == 1:
-            if val == 0xFF:
-                state = 2
-            else:
+        while len(byte_buffer) > 0:
+            val = byte_buffer.pop(0)
+            if state == 0:
+                if val == 0xFF:
+                    state = 1
+            elif state == 1:
+                if val == 0xFF:
+                    state = 2
+                else:
+                    state = 0
+            elif state == 2:
+                payload_type = val
+                state = 3
+            elif state == 3:
+                payload_len = val
+                payload = bytearray()
+                state = 4
+            elif state == 4:
+                payload.append(val)
+                if len(payload) == payload_len:
+                    state = 5
+            elif state == 5:
+                checksum = (payload_type + payload_len + sum(payload)) & 0xFF
+                if checksum == val:
+                    if payload_type == 0x01 and len(payload) == 12:
+                        channels = struct.unpack('<6H', payload)
+                        now = time.time()
+                        if now - last_print > 0.05:
+                            last_print = now
+                            sys.stdout.write(f"\rCh1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]} | Ch4: {channels[3]}    ")
+                            sys.stdout.flush()
                 state = 0
-        elif state == 2:
-            payload_type = val
-            state = 3
-        elif state == 3:
-            payload_len = val
-            payload = bytearray()
-            state = 4
-        elif state == 4:
-            payload.append(val)
-            if len(payload) == payload_len:
-                state = 5
-        elif state == 5:
-            checksum = (payload_type + payload_len + sum(payload)) & 0xFF
-            if checksum == val:
-                if payload_type == 0x01 and len(payload) == 12:
-                    channels = struct.unpack('<6H', payload)
-                    # Limit output to 20 Hz to avoid terminal print lag
-                    now = time.time()
-                    if now - last_print > 0.05:
-                        last_print = now
-                        sys.stdout.write(f"\rCh1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]} | Ch4: {channels[3]}    ")
-                        sys.stdout.flush()
-            state = 0
 except KeyboardInterrupt:
     print("\nSaliendo...")
 finally:
