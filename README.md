@@ -183,3 +183,27 @@ This utility will pulse each motor at 30% thrust for 4 seconds, ask you to selec
 * **Payload:** 5.0 kg + water displacement
 * **Maneuverable:** 4 thrusters in an X-configuration enable omnidirectional motion and dynamic positioning (DP) at arbitrary orientations.
 * **Development Context:** The physical platform was designed by LABUST (see [PlaDyFleet Website](https://pladyfleet.fer.hr/pladyfleet/pladypos)). This ROS 2 package update was developed by the German Research Center for Artificial Intelligence (DFKI).
+
+---
+
+## 7. Telemetry & Control Vector Mappings
+
+The USV outputs its current thruster efforts on the ROS 2 topic `motor_feedback` (type `std_msgs/Float32MultiArray`) at **30 Hz**. The values represent normalized thruster forces ranging from `-1.0` (maximum reverse thrust) to `1.0` (maximum forward thrust).
+
+The vector contains exactly 4 elements mapped in the following order:
+
+| Index | Physical Location | Abbreviation | Associated Arduino Pin / Output | Description |
+| :---: | :---: | :---: | :---: | --- |
+| **0** | Front Right | `FR` | Pin `A0` (Thruster 1) | Normalized force of the front-right thruster |
+| **1** | Front Left | `FL` | Pin `A1` (Thruster 2) | Normalized force of the front-left thruster |
+| **2** | Back Right | `BR` | Pin `A2` (Thruster 3) | Normalized force of the back-right thruster |
+| **3** | Back Left | `BL` | Pin `A3` (Thruster 4) | Normalized force of the back-left thruster |
+
+### Radio Control (Spektrum DSMX) Channels
+When using manual Spektrum RC control (Channel 4 is set to `1705`), the channel mappings decoded by the bridge are:
+* **Channel 1 (surge / $u$):** Advance motion. Range `342` (backward) to `1702` (forward). Center is `1023`.
+* **Channel 2 (sway / $v$):** Lateral motion. Range `343` (right) to `1702` (left). Center is `1023`.
+* **Channel 3 (yaw / $r$):** Clockwise/counter-clockwise rotation. Range `343` (clockwise) to `1702` (counter-clockwise). Center is `1023`.
+* **Channel 4:** Control Mode Switch:
+  * `1705` (High): **Radio Control Mode** (takes priority).
+  * `343` (Low): **PC / ROS 2 Joystick Mode** (default fallback when radio signal is off).

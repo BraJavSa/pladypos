@@ -22,6 +22,7 @@ class SerialBridge(Node):
 
         self.spektrum_pub = self.create_publisher(Int16MultiArray, 'spektrum', 10)
         self.joy_pub = self.create_publisher(Joy, 'joy', 10)
+        self.motor_feedback_pub = self.create_publisher(Float32MultiArray, 'motor_feedback', 10)
 
         self.pwm_sub = self.create_subscription(
             Float32MultiArray,
@@ -255,7 +256,11 @@ class SerialBridge(Node):
             pass
 
         elif p_type == 4:
-            pass
+            if len(payload) == 16:
+                motors_feedback = struct.unpack('<4f', payload)
+                fb_msg = Float32MultiArray()
+                fb_msg.data = list(motors_feedback)
+                self.motor_feedback_pub.publish(fb_msg)
 
     def destroy_node(self):
         self.running = False
