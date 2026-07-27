@@ -13,11 +13,15 @@ class DepthToMono8(Node):
         # Declare parameters
         self.declare_parameter('input_topic', '/usv5/camera/depth_raw')
         self.declare_parameter('output_topic', '/usv5/camera/depth')
-        self.declare_parameter('max_depth', 12.0) # Maximum distance in meters (Kinect limit is 12m)
+        self.declare_parameter('mode', 'depth') # 'depth' or 'ir'
+        self.declare_parameter('max_depth', 12.0) # For depth mode
+        self.declare_parameter('ir_scale', 0.02) # For ir mode (0.02 is legacy default)
 
         self.input_topic = self.get_parameter('input_topic').get_parameter_value().string_value
         self.output_topic = self.get_parameter('output_topic').get_parameter_value().string_value
+        self.mode = self.get_parameter('mode').get_parameter_value().string_value
         self.max_depth_m = self.get_parameter('max_depth').get_parameter_value().double_value
+        self.ir_scale = self.get_parameter('ir_scale').get_parameter_value().double_value
 
         self.bridge = CvBridge()
         self.publisher = self.create_publisher(Image, self.output_topic, 10)
@@ -29,32 +33,28 @@ class DepthToMono8(Node):
             10
         )
         self.get_logger().info(
-            f"Optimized conversion: {self.input_topic} -> {self.output_topic}. Max depth: {self.max_depth_m}m"
+            f"Running in {self.mode.upper()} mode: {self.input_topic} -> {self.output_topic}"
         )
 
     def listener_callback(self, msg):
         try:
             # Convert ROS Image to OpenCV without copying data
-            depth_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+            img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
 
-            # Determine max depth in millimeters (standard for 16UC1)
-            max_depth_mm = self.max_depth_m * 1000.0
+            if self.mode == 'ir':
+                # Convert 16-bit IR to 8-bit using the scale factor
+                # formula: y = img * ir_scale
+                # cv2.convertScaleAbs does: dst = clip(abs(img * alpha + beta), 0, 255)
+                mono8_img = cv2.convertScaleAbs(img, alpha=self.ir_scale, beta=0.0)
+            else:
+                # Standard DEPTH mode
+                max_depth_mm = self.max_depth_m * 1000.0
+                valid_mask = img > 0
+                alpha = -255.0 / max_depth_mm
+                beta = 255.0
 
-            # Create a mask for valid depth pixels (greater than 0)
-            valid_mask = depth_img > 0
-
-            # Calculate scale factor for mapping:
-            # x = 0    => y = 255
-            # x = max  => y = 0
-            # Formula: y = - (255 / max_depth_mm) * x + 255
-            alpha = -255.0 / max_depth_mm
-            beta = 255.0
-
-            # cv2.convertScaleAbs applies the scale, offset, and absolute cast to 8-bit in C++ (extremely fast!)
-            mono8_img = cv2.convertScaleAbs(depth_img, alpha=alpha, beta=beta)
-
-            # Set invalid pixels (depth == 0) to 0 (black)
-            mono8_img[~valid_mask] = 0
+                mono8_img = cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
+                mono8_img[~valid_mask] = 0
 
             # Publish the 8-bit image
             out_msg = self.bridge.cv2_to_imgmsg(mono8_img, encoding="mono8")
@@ -62,7 +62,7 @@ class DepthToMono8(Node):
             self.publisher.publish(out_msg)
 
         except Exception as e:
-            self.get_logger().error(f"Error converting depth: {e}")
+            self.get_logger().error(f"Error converting image: {e}")
 
 def main(args=None):
     rclpy.init(args=args)

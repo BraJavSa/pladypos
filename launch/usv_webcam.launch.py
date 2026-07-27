@@ -113,8 +113,8 @@ def generate_launch_description():
         remappings=[
             ('/kinect2/qhd/image_color_rect', f'/{ns}/camera/image_raw'),
             ('/kinect2/qhd/image_color_rect/compressed', f'/{ns}/camera/image_raw/compressed'),
-            ('/kinect2/sd/image_depth_rect', f'/{ns}/camera/depth_raw'),
-            ('/kinect2/sd/image_depth_rect/compressed', f'/{ns}/camera/depth_raw/compressed'),
+            ('/kinect2/sd/image_ir_rect', f'/{ns}/camera/ir_raw'),
+            ('/kinect2/sd/image_ir_rect/compressed', f'/{ns}/camera/ir_raw/compressed'),
         ],
         output='screen'
     )
@@ -125,9 +125,10 @@ def generate_launch_description():
         name='depth_to_mono8_node',
         output='screen',
         parameters=[{
-            'input_topic': f'/{ns}/camera/depth_raw',
+            'input_topic': f'/{ns}/camera/ir_raw',
             'output_topic': f'/{ns}/camera/depth',
-            'max_depth': 12.0
+            'mode': 'ir',
+            'ir_scale': 0.02
         }]
     )
 
