@@ -15,6 +15,7 @@ install(PROGRAMS
   src/python_nodes/motor_mapper.py
   src/python_nodes/camera_driver.py
   src/python_nodes/kinect_to_v4l2.py
+  src/python_nodes/depth_to_mono8.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

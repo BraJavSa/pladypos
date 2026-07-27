@@ -113,10 +113,22 @@ def generate_launch_description():
         remappings=[
             ('/kinect2/qhd/image_color_rect', f'/{ns}/camera/image_raw'),
             ('/kinect2/qhd/image_color_rect/compressed', f'/{ns}/camera/image_raw/compressed'),
-            ('/kinect2/qhd/image_depth_rect', f'/{ns}/camera/depth'),
-            ('/kinect2/qhd/image_depth_rect/compressed', f'/{ns}/camera/depth/compressed'),
+            ('/kinect2/qhd/image_depth_rect', f'/{ns}/camera/depth_raw'),
+            ('/kinect2/qhd/image_depth_rect/compressed', f'/{ns}/camera/depth_raw/compressed'),
         ],
         output='screen'
+    )
+
+    depth_to_mono8_node = Node(
+        package='pladypos',
+        executable='depth_to_mono8.py',
+        name='depth_to_mono8_node',
+        output='screen',
+        parameters=[{
+            'input_topic': f'/{ns}/camera/depth_raw',
+            'output_topic': f'/{ns}/camera/depth',
+            'max_depth': 5.0
+        }]
     )
 
     filter_start_event = RegisterEventHandler(
@@ -147,6 +159,7 @@ def generate_launch_description():
         serial_bridge_node,
         teleop_mixer_node,
         kinect_webcam_node,
+        depth_to_mono8_node,
         web_video_server_node,
         filter_start_event
     ])
