@@ -45,7 +45,6 @@ try:
                     byte_buffer = bytearray()
                 break
             
-            # If we found a header, make sure we have type and len
             if idx + 4 > len(byte_buffer):
                 byte_buffer = byte_buffer[idx:]
                 break
@@ -74,7 +73,7 @@ try:
                         freq = data_unpacked[6]
                         
                         # Only print if values changed to prevent SSH/network buffering lag
-                        if 'prev_channels' not in locals() or prev_channels != channels:
+                        if prev_channels != channels:
                             prev_channels = channels
                             sys.stdout.write(f"\r[Radio 0x01] Ch1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]} | Freq: {freq} Hz      ")
                             sys.stdout.flush()
@@ -94,7 +93,7 @@ try:
                     sys.stdout.flush()
                 
                 # Consume this packet
-                byte_buffer = bytebuffer = byte_buffer[total_len:]
+                byte_buffer = byte_buffer[total_len:]
             else:
                 # Checksum failed, discard only the first 0xFF byte to look for next header
                 byte_buffer = byte_buffer[idx + 1:]
