@@ -5,7 +5,7 @@ from rclpy.node import Node
 import cv2
 import numpy as np
 from cv_bridge import CvBridge
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import Image, CameraInfo, Imu
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TransformStamped
 from tf2_ros import TransformBroadcaster
@@ -45,6 +45,7 @@ class VisualOdometry(Node):
         # Declare parameters
         self.declare_parameter('scale_factor', 0.003)      # Scale translation based on pixel motion
         self.declare_parameter('min_displacement', 1.0)    # Min pixel displacement to register motion
+        self.declare_parameter('yaw_mismatch_threshold', 0.05)  # Max allowed yaw diff between VO and IMU (rad)
         self.declare_parameter('min_features', 60)         # Redetect if tracked features drop below this
         self.declare_parameter('max_features', 150)        # Max features to detect
         self.declare_parameter('publish_tf', True)         # Publish odom -> base_link TF
@@ -59,6 +60,7 @@ class VisualOdometry(Node):
         # Get parameter values
         self.scale_factor = self.get_parameter('scale_factor').value
         self.min_displacement = self.get_parameter('min_displacement').value
+        self.yaw_mismatch_threshold = self.get_parameter('yaw_mismatch_threshold').value
         self.min_features = self.get_parameter('min_features').value
         self.max_features = self.get_parameter('max_features').value
         self.publish_tf = self.get_parameter('publish_tf').value
@@ -119,6 +121,15 @@ class VisualOdometry(Node):
             self.camera_info_callback,
             10
         )
+        self.imu_sub = self.create_subscription(
+            Imu,
+            'imu/data',
+            self.imu_callback,
+            10
+        )
+        
+        self.last_imu_yaw = None
+        self.prev_imu_yaw = None
 
         # Publishers
         self.odom_pub = self.create_publisher(Odometry, 'camera/odom', 10)
@@ -143,6 +154,12 @@ class VisualOdometry(Node):
             self.K = np.array(msg.k).reshape((3, 3))
             self.intrinsics_loaded = True
             self.get_logger().info(f"Loaded camera intrinsics from camera_info: fx={self.K[0,0]:.2f}, cx={self.K[0,2]:.2f}")
+
+    def imu_callback(self, msg):
+        q = msg.orientation
+        siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+        self.last_imu_yaw = np.arctan2(siny_cosp, cosy_cosp)
 
     def image_callback(self, msg):
         try:
@@ -220,27 +237,53 @@ class VisualOdometry(Node):
                     if mean_displacement > self.min_displacement:
                         scale = mean_displacement * self.scale_factor
                         
-                        # Update camera pose using calculated motion
-                        T_prev_curr = np.eye(4)
-                        T_prev_curr[0:3, 0:3] = R
-                        T_prev_curr[0:3, 3] = t.ravel() * scale
+                        # Transform camera rotation to base_link frame to extract base_link yaw change
+                        R_base = self.R_b_c @ R @ self.R_b_c.T
+                        delta_yaw_vo = np.arctan2(R_base[1, 0], R_base[0, 0])
                         
-                        # Integrate pose
-                        self.T_world_cam = self.T_world_cam @ T_prev_curr
+                        # Calculate IMU yaw change
+                        delta_yaw_imu = 0.0
+                        is_mismatch = False
+                        if self.last_imu_yaw is not None and self.prev_imu_yaw is not None:
+                            diff = self.last_imu_yaw - self.prev_imu_yaw
+                            delta_yaw_imu = np.arctan2(np.sin(diff), np.cos(diff))
+                            yaw_discrepancy = np.abs(np.arctan2(np.sin(delta_yaw_vo - delta_yaw_imu), np.cos(delta_yaw_vo - delta_yaw_imu)))
+                            
+                            if yaw_discrepancy > self.yaw_mismatch_threshold:
+                                is_mismatch = True
+                                self.get_logger().warn(
+                                    f"VO update rejected: yaw mismatch with IMU. VO yaw change: {delta_yaw_vo*180/np.pi:.2f} deg, "
+                                    f"IMU yaw change: {delta_yaw_imu*180/np.pi:.2f} deg. Discrepancy: {yaw_discrepancy*180/np.pi:.2f} deg"
+                                )
                         
-                        # Estimate velocities
-                        if dt > 0.0:
-                            self.linear_velocity = (t.ravel() * scale) / dt
-                            # Calculate angular velocities from rotation matrix
-                            sy = np.sqrt(R[0,0]*R[0,0] + R[1,0]*R[1,0])
-                            if sy > 1e-6:
-                                self.angular_velocity = np.array([
-                                    np.arctan2(R[2,1], R[2,2]),
-                                    np.arctan2(-R[2,0], sy),
-                                    np.arctan2(R[1,0], R[0,0])
-                                ]) / dt
-                            else:
-                                self.angular_velocity = np.zeros(3)
+                        if self.last_imu_yaw is not None:
+                            self.prev_imu_yaw = self.last_imu_yaw
+
+                        if not is_mismatch:
+                            # Update camera pose using calculated motion
+                            T_prev_curr = np.eye(4)
+                            T_prev_curr[0:3, 0:3] = R
+                            T_prev_curr[0:3, 3] = t.ravel() * scale
+                            
+                            # Integrate pose
+                            self.T_world_cam = self.T_world_cam @ T_prev_curr
+                            
+                            # Estimate velocities
+                            if dt > 0.0:
+                                self.linear_velocity = (t.ravel() * scale) / dt
+                                # Calculate angular velocities from rotation matrix
+                                sy = np.sqrt(R[0,0]*R[0,0] + R[1,0]*R[1,0])
+                                if sy > 1e-6:
+                                    self.angular_velocity = np.array([
+                                        np.arctan2(R[2,1], R[2,2]),
+                                        np.arctan2(-R[2,0], sy),
+                                        np.arctan2(R[1,0], R[0,0])
+                                    ]) / dt
+                                else:
+                                    self.angular_velocity = np.zeros(3)
+                        else:
+                            self.linear_velocity = np.zeros(3)
+                            self.angular_velocity = np.zeros(3)
                     else:
                         self.linear_velocity = np.zeros(3)
                         self.angular_velocity = np.zeros(3)
@@ -291,6 +334,26 @@ class VisualOdometry(Node):
         odom_msg.header.frame_id = self.odom_frame
         odom_msg.child_frame_id = self.base_frame
         odom_msg.pose.pose = pose_msg.pose
+
+        # Non-zero covariances for robot_localization EKF fusion
+        # Low variance for tracked variables (X, Y, Yaw), high variance for untracked (Z, Roll, Pitch)
+        pose_cov = [0.0] * 36
+        pose_cov[0] = 0.01   # X variance
+        pose_cov[7] = 0.01   # Y variance
+        pose_cov[14] = 999.0 # Z variance
+        pose_cov[21] = 999.0 # Roll variance
+        pose_cov[28] = 999.0 # Pitch variance
+        pose_cov[35] = 0.05  # Yaw variance
+        odom_msg.pose.covariance = pose_cov
+
+        twist_cov = [0.0] * 36
+        twist_cov[0] = 0.02   # X velocity variance
+        twist_cov[7] = 0.02   # Y velocity variance
+        twist_cov[14] = 999.0 # Z velocity variance
+        twist_cov[21] = 999.0 # Roll velocity variance
+        twist_cov[28] = 999.0 # Pitch velocity variance
+        twist_cov[35] = 0.1   # Yaw velocity variance
+        odom_msg.twist.covariance = twist_cov
         
         # Express velocity in the boat's base_link frame
         # v_base = R_c_b * v_camera

@@ -130,6 +130,22 @@ class IMUDriver(Node):
                         imu_msg = Imu()
                         imu_msg.header.stamp = self.get_clock().now().to_msg()
                         imu_msg.header.frame_id = 'imu_link'
+                        # Non-zero covariances for robot_localization EKF fusion
+                        imu_msg.orientation_covariance = [
+                            0.001, 0.0, 0.0,
+                            0.0, 0.001, 0.0,
+                            0.0, 0.0, 0.001
+                        ]
+                        imu_msg.angular_velocity_covariance = [
+                            0.0001, 0.0, 0.0,
+                            0.0, 0.0001, 0.0,
+                            0.0, 0.0, 0.0001
+                        ]
+                        imu_msg.linear_acceleration_covariance = [
+                            0.01, 0.0, 0.0,
+                            0.0, 0.01, 0.0,
+                            0.0, 0.0, 0.01
+                        ]
 
                         if self.use_ned:
                             imu_msg.linear_acceleration.x = -acc[0] * 9.8065

@@ -169,9 +169,9 @@ def generate_launch_description():
             'publish_tf': False,         # EKF node will publish the TF
             'odom_frame': 'odom',
             'base_frame': f'{ns}/base_link',
-            'cam_x': 0.10,
+            'cam_x': 0.25,
             'cam_y': 0.0,
-            'cam_z': 0.30
+            'cam_z': 0.15
         }],
         remappings=[
             ('camera/image_raw', 'camera/image_raw'),
