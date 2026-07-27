@@ -20,6 +20,7 @@ last_print = 0
 
 try:
     byte_buffer = bytearray()
+    prev_channels = None
     while True:
         in_waiting = ser.in_waiting
         if in_waiting > 2000:
