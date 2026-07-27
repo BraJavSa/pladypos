@@ -229,13 +229,13 @@ class VisualOdometry(Node):
                     
                     if len(inliers_curr) > 0:
                         displacements = np.linalg.norm(inliers_curr - inliers_prev, axis=1)
-                        mean_displacement = np.mean(displacements)
+                        median_displacement = np.median(displacements)
                     else:
-                        mean_displacement = 0.0
+                        median_displacement = 0.0
 
                     # If displacement is above threshold, update motion; otherwise keep stationary
-                    if mean_displacement > self.min_displacement:
-                        scale = mean_displacement * self.scale_factor
+                    if median_displacement > self.min_displacement:
+                        scale = median_displacement * self.scale_factor
                         
                         # Transform camera rotation to base_link frame to extract base_link yaw change
                         R_base = self.R_b_c @ R @ self.R_b_c.T

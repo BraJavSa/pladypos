@@ -10,7 +10,7 @@
 
     # Odom0: Visual Odometry
     odom0: camera/odom
-    odom0_config: [true,  true,  false,  # Fuse X, Y position
+    odom0_config: [false, false, false,  # Do not fuse absolute position (highly vulnerable to jumps)
                    false, false, false,  # Do not fuse orientation (leave to IMU)
                    true,  true,  false,  # Fuse X, Y linear velocity
                    false, false, false,
@@ -18,6 +18,7 @@
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 2
+    odom0_threshold: 2.0  # Reject outliers (e.g. moving people) inconsistent with the IMU
 
     # Imu0: IMU complementary filter
     imu0: imu/data
