@@ -75,7 +75,7 @@ try:
                         # Only print if values changed to prevent SSH/network buffering lag
                         if prev_channels != channels:
                             prev_channels = channels
-                            sys.stdout.write(f"\r[Radio 0x01] Ch1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]} | Freq: {freq} Hz      ")
+                            sys.stdout.write(f"\r[Radio 0x01] Ch1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]} | Ch4: {channels[3]} | Ch5: {channels[4]} | Ch6: {channels[5]} | Freq: {freq} Hz      ")
                             sys.stdout.flush()
                     else:
                         sys.stdout.write(f"\r[Radio 0x01] Got unexpected len {len(payload)}                      ")
