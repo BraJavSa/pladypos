@@ -8,7 +8,7 @@ baud = 115200
 
 print(f"Abriendo puerto {port}...")
 try:
-    ser = serial.Serial(port, baud, timeout=0.1)
+    ser = serial.Serial(port, baud, timeout=0)
     ser.reset_input_buffer()
 except Exception as e:
     print(f"Error al abrir puerto: {e}")
@@ -31,7 +31,7 @@ try:
         elif in_waiting > 0:
             byte_buffer.extend(ser.read(in_waiting))
         else:
-            byte_buffer.extend(ser.read(1))
+            time.sleep(0.001)
 
         while True:
             # Find the header sequence 0xFF 0xFF
