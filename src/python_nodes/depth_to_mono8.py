@@ -11,20 +11,17 @@ class DepthToMono8(Node):
         super().__init__('depth_to_mono8')
 
         # Declare parameters
-        self.declare_parameter('input_topic', '/usv5/camera/depth')
-        self.declare_parameter('output_topic', '/usv5/camera/depth_mono')
-        self.declare_parameter('max_depth', 5.0) # Maximum distance in meters to map to black
+        self.declare_parameter('input_topic', '/usv5/camera/depth_raw')
+        self.declare_parameter('output_topic', '/usv5/camera/depth')
+        self.declare_parameter('max_depth', 12.0) # Maximum distance in meters (Kinect limit is 12m)
 
         self.input_topic = self.get_parameter('input_topic').get_parameter_value().string_value
         self.output_topic = self.get_parameter('output_topic').get_parameter_value().string_value
         self.max_depth_m = self.get_parameter('max_depth').get_parameter_value().double_value
 
         self.bridge = CvBridge()
-
-        # Publisher for the 8-bit displayable depth image
         self.publisher = self.create_publisher(Image, self.output_topic, 10)
-
-        # Subscriber to the raw 16-bit depth image
+        
         self.subscription = self.create_subscription(
             Image,
             self.input_topic,
@@ -32,43 +29,40 @@ class DepthToMono8(Node):
             10
         )
         self.get_logger().info(
-            f"Converting {self.input_topic} (16-bit) to {self.output_topic} (8-bit grayscale). "
-            f"Max depth set to {self.max_depth_m} meters."
+            f"Optimized conversion: {self.input_topic} -> {self.output_topic}. Max depth: {self.max_depth_m}m"
         )
 
     def listener_callback(self, msg):
         try:
-            # 1. Convert ROS Image to OpenCV.
-            # Kinect v2 depth is typically 16UC1 (16-bit unsigned depth in mm)
+            # Convert ROS Image to OpenCV without copying data
             depth_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
 
-            # 2. Convert to float32 for normalized scaling
-            depth_img_float = depth_img.astype(np.float32)
+            # Determine max depth in millimeters (standard for 16UC1)
+            max_depth_mm = self.max_depth_m * 1000.0
 
-            # Convert mm to meters if encoding is 16UC1
-            if msg.encoding == "16UC1":
-                depth_img_float /= 1000.0
+            # Create a mask for valid depth pixels (greater than 0)
+            valid_mask = depth_img > 0
 
-            # 3. Scale and invert: Closer = Whiter (255), Farther/Invalid = Black (0)
-            # Map 0 meters to 255, and max_depth_m to 0.
-            # Equation: y = 255 * (1 - x / max_depth)
-            mono8_img = 255.0 * (1.0 - (depth_img_float / self.max_depth_m))
-            
-            # Clip values between 0 and 255
-            mono8_img = np.clip(mono8_img, 0, 255).astype(np.uint8)
+            # Calculate scale factor for mapping:
+            # x = 0    => y = 255
+            # x = max  => y = 0
+            # Formula: y = - (255 / max_depth_mm) * x + 255
+            alpha = -255.0 / max_depth_mm
+            beta = 255.0
 
-            # Handle invalid depth values (which are 0 in Kinect depth data)
-            # A depth of exactly 0 mm usually means invalid reading / out of range.
-            # We want invalid readings to be black (0) instead of bright white (255).
-            mono8_img[depth_img == 0] = 0
+            # cv2.convertScaleAbs applies the scale, offset, and absolute cast to 8-bit in C++ (extremely fast!)
+            mono8_img = cv2.convertScaleAbs(depth_img, alpha=alpha, beta=beta)
 
-            # 4. Convert back to ROS Image and publish
+            # Set invalid pixels (depth == 0) to 0 (black)
+            mono8_img[~valid_mask] = 0
+
+            # Publish the 8-bit image
             out_msg = self.bridge.cv2_to_imgmsg(mono8_img, encoding="mono8")
             out_msg.header = msg.header
             self.publisher.publish(out_msg)
 
         except Exception as e:
-            self.get_logger().error(f"Error converting depth image: {e}")
+            self.get_logger().error(f"Error converting depth: {e}")
 
 def main(args=None):
     rclpy.init(args=args)

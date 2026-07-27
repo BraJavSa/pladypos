@@ -127,7 +127,7 @@ def generate_launch_description():
         parameters=[{
             'input_topic': f'/{ns}/camera/depth_raw',
             'output_topic': f'/{ns}/camera/depth',
-            'max_depth': 5.0
+            'max_depth': 12.0
         }]
     )
 
