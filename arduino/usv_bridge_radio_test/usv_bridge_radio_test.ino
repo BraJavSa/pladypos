@@ -37,13 +37,6 @@ void loop() {
   // Read radio receiver continuously
   readSpektrum();
 
-  // Watchdog heartbeat (toggles Pin 7 at 1 Hz)
-  unsigned long now = millis();
-  if (now - last_watchdog_time >= 1000) {
-    last_watchdog_time = now;
-    watchdog_state = !watchdog_state;
-    digitalWrite(7, watchdog_state ? HIGH : LOW);
-  }
 }
 
 void readSerialPC() {
