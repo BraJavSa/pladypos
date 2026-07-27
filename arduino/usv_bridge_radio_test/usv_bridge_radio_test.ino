@@ -27,7 +27,7 @@ void setup() {
 
   // Initialize watchdog pin
   pinMode(7, OUTPUT);
-  digitalWrite(7, LOW);
+  digitalWrite(7, HIGH);
 }
 
 void loop() {
