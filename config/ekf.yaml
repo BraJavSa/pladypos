@@ -1,0 +1,34 @@
+/**:
+  ros__parameters:
+    frequency: 30.0
+    two_d_mode: true
+    publish_tf: true
+
+    odom_frame: odom
+    base_link_frame: base_link  # Will be resolved relative to the node's namespace if frame_prefix is used, or we set it dynamically in launch
+    world_frame: odom
+
+    # Odom0: Visual Odometry
+    odom0: camera/odom
+    odom0_config: [true,  true,  false,  # Fuse X, Y position
+                   false, false, false,  # Do not fuse orientation (leave to IMU)
+                   true,  true,  false,  # Fuse X, Y linear velocity
+                   false, false, false,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 2
+
+    # Imu0: IMU complementary filter
+    imu0: imu/data
+    imu0_config: [false, false, false,
+                  true,  true,  true,   # Fuse Roll, Pitch, Yaw
+                  false, false, false,
+                  true,  true,  true,   # Fuse angular velocities
+                  true,  true,  false]  # Fuse linear acceleration X, Y (no Z acceleration for 2D mode)
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 5
+    imu0_remove_gravitational_acceleration: true
+
+    use_control: false

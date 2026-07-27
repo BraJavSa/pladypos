@@ -166,7 +166,7 @@ def generate_launch_description():
             'scale_factor': 0.003,      # Tunable scale factor
             'min_features': 50,
             'max_features': 150,
-            'publish_tf': True,
+            'publish_tf': False,         # EKF node will publish the TF
             'odom_frame': 'odom',
             'base_frame': f'{ns}/base_link',
             'cam_x': 0.10,
@@ -182,6 +182,22 @@ def generate_launch_description():
         ]
     )
 
+    ekf_config_path = os.path.join(get_package_share_directory('pladypos'), 'config', 'ekf.yaml')
+
+    ekf_node = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        namespace=ns,
+        output='screen',
+        parameters=[
+            ekf_config_path,
+            {
+                'base_link_frame': f'{ns}/base_link'
+            }
+        ]
+    )
+
     return LaunchDescription([
         baud_arg,
         port_imu_arg,
@@ -193,5 +209,6 @@ def generate_launch_description():
         ir_converter_node,
         web_video_server_node,
         visual_odometry_node,
+        ekf_node,
         filter_start_event
     ])
