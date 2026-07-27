@@ -26,7 +26,6 @@ float scale_input(uint16_t val, uint16_t min_val, uint16_t max_val);
 void readSerialPC();
 void processPCPacket(uint8_t type, uint8_t *data, uint8_t len);
 void readSpektrum();
-void sendSpektrumToPC();
 void sendFeedbackToPC();
 
 void setup() {
@@ -239,8 +238,6 @@ void readSpektrum() {
       spektrum_received = true;
       last_spektrum_time = millis();
       packet_idx = 0;
-
-      sendSpektrumToPC();
     }
   }
 
@@ -249,36 +246,7 @@ void readSpektrum() {
   }
 }
 
-void sendSpektrumToPC() {
-  if (Serial.availableForWrite() >= 19) {
-    uint8_t header[4] = {0xFF, 0xFF, 0x01, 14};
-    uint8_t checksum = 0x01 + 14;
 
-    Serial.write(header, 4);
-
-    uint8_t *data_ptr = (uint8_t *)spektrum_channels;
-    for (int i = 0; i < 12; ++i) {
-      checksum += data_ptr[i];
-      Serial.write(data_ptr[i]);
-    }
-
-    static unsigned long last_freq_calc = 0;
-    static uint16_t current_freq = 0;
-    unsigned long now = millis();
-    if (now - last_freq_calc >= 1000) {
-      current_freq = spektrum_rx_count;
-      spektrum_rx_count = 0;
-      last_freq_calc = now;
-    }
-
-    uint8_t *freq_ptr = (uint8_t *)&current_freq;
-    checksum += freq_ptr[0] + freq_ptr[1];
-    Serial.write(freq_ptr[0]);
-    Serial.write(freq_ptr[1]);
-
-    Serial.write(checksum);
-  }
-}
 
 void sendFeedbackToPC() {
   if (Serial.availableForWrite() >= 21) {

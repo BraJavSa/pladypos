@@ -33,6 +33,7 @@ class SerialBridge(Node):
 
         self.ser = None
         self.lock = threading.Lock()
+        self.last_pwm_send_time = 0.0
         
         if self.port == 'auto':
             self.get_logger().info("Searching for Arduino bridge port dynamically...")
@@ -124,6 +125,12 @@ class SerialBridge(Node):
         return 2.0 * float(val - self.joy_min) / (self.joy_max - self.joy_min) - 1.0
 
     def pwm_callback(self, msg):
+        # Rate limit outgoing serial commands to 30 Hz (every 33.3ms)
+        now = self.get_clock().now().nanoseconds / 1e9
+        if now - self.last_pwm_send_time < 0.033:
+            return
+        self.last_pwm_send_time = now
+
         with self.lock:
             if not self.ser or not self.ser.is_open or not hasattr(msg, 'data'):
                 return
