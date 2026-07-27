@@ -36,13 +36,13 @@ def generate_launch_description():
     
     port_imu_arg = DeclareLaunchArgument(
         'port_imu',
-        default_value='/dev/ttyACM1',
+        default_value='auto',
         description='Port of the IMU'
     )
     
     port_arduino_arg = DeclareLaunchArgument(
         'port_arduino',
-        default_value='/dev/ttyACM0',
+        default_value='auto',
         description='Port of the Arduino'
     )
 
