@@ -113,8 +113,8 @@ def generate_launch_description():
         remappings=[
             ('/kinect2/qhd/image_color_rect', f'/{ns}/camera/image_raw'),
             ('/kinect2/qhd/image_color_rect/compressed', f'/{ns}/camera/image_raw/compressed'),
-            ('/kinect2/qhd/image_depth_rect', f'/{ns}/camera/depth_raw'),
-            ('/kinect2/qhd/image_depth_rect/compressed', f'/{ns}/camera/depth_raw/compressed'),
+            ('/kinect2/sd/image_depth_rect', f'/{ns}/camera/depth_raw'),
+            ('/kinect2/sd/image_depth_rect/compressed', f'/{ns}/camera/depth_raw/compressed'),
         ],
         output='screen'
     )
@@ -146,7 +146,7 @@ def generate_launch_description():
             'port': 8080,
             'address': '0.0.0.0',
             'type': 'mjpeg',
-            'default_transport': 'compressed'
+            'default_transport': 'raw'
         }],
         output='screen'
     )
