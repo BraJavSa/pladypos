@@ -2,9 +2,8 @@ import os
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler
 from launch.event_handlers import OnProcessStart
-from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -47,7 +46,7 @@ def generate_launch_description():
         description='Port of the Arduino'
     )
 
-    # Core nodes
+    # Core hardware nodes
     imu_driver_node = Node(
         package='pladypos',
         executable='imu_driver.py',
@@ -93,15 +92,49 @@ def generate_launch_description():
         ]
     )
 
-    # Include the Kinect v2 Bridge launcher
-    kinect_bridge_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            os.path.join(
-                get_package_share_directory('kinect2_bridge'),
-                'launch',
-                'kinect2_bridge.launch.py'
-            )
-        ])
+    # Launch Kinect v2 Bridge Node directly in 2D / Webcam mode (No PointCloud container)
+    kinect_webcam_node = Node(
+        package='kinect2_bridge',
+        executable='kinect2_bridge',
+        name='kinect2_bridge',
+        emulate_tty=True,
+        parameters=[{
+            'base_name': 'kinect2',
+            'sensor': '',
+            'publish_tf': False,        # Disable transform calculations
+            'worker_threads': 2,        # Restrict threads to save CPU
+            'fps_limit': -1.0,          # Correct double type
+            'use_png': False,
+            'jpeg_quality': 85,         # Compressed JPEG stream for WiFi efficiency
+            'png_level': 1,
+            'depth_method': 'default',
+            'reg_method': 'default'
+        }],
+        remappings=[
+            ('/kinect2/qhd/image_color_rect', f'/{ns}/camera/image_raw'),
+            ('/kinect2/qhd/image_color_rect/compressed', f'/{ns}/camera/image_raw/compressed'),
+            ('/kinect2/qhd/camera_info', f'/{ns}/camera/camera_info'),
+            ('/kinect2/sd/image_ir', f'/{ns}/camera/ir_raw'),
+            ('/kinect2/sd/image_ir/compressed', f'/{ns}/camera/ir_raw/compressed'),
+            ('/kinect2/sd/camera_info', f'/{ns}/camera/ir_camera_info'),
+        ],
+        output='screen'
+    )
+
+    # Convert IR stream to mono8 for Visual Odometry
+    ir_converter_node = Node(
+        package='pladypos',
+        executable='depth_to_mono8.py',
+        name='ir_converter_node',
+        output='screen',
+        parameters=[{
+            'input_topic': f'/{ns}/camera/ir_raw',
+            'output_topic': f'/{ns}/camera/ir',
+            'mode': 'ir',
+            'ir_scale': 0.02,
+            'width': 960,
+            'height': 540
+        }]
     )
 
     filter_start_event = RegisterEventHandler(
@@ -111,6 +144,62 @@ def generate_launch_description():
         )
     )
 
+    web_video_server_node = Node(
+        package='web_video_server',
+        executable='web_video_server',
+        name='web_video_server',
+        parameters=[{
+            'port': 8080,
+            'address': '0.0.0.0',
+            'type': 'mjpeg',
+            'default_transport': 'raw'
+        }],
+        output='screen'
+    )
+
+    # Visual Odometry using the Kinect IR stream
+    visual_odometry_node = Node(
+        package='pladypos',
+        executable='visual_odometry.py',
+        name='visual_odometry_node',
+        namespace=ns,
+        output='screen',
+        parameters=[{
+            'scale_factor': 0.003,      # Tunable scale factor
+            'min_features': 50,
+            'max_features': 150,
+            'publish_tf': False,         # EKF node will publish the TF
+            'odom_frame': 'odom',
+            'base_frame': f'{ns}/base_link',
+            'cam_x': 0.25,
+            'cam_y': 0.0,
+            'cam_z': 0.15
+        }],
+        remappings=[
+            ('camera/image_raw', 'camera/ir'), # Use the processed IR mono8 stream
+            ('camera/camera_info', 'camera/ir_camera_info'),
+            ('camera/odom', 'camera/odom'),
+            ('camera/pose', 'camera/pose'),
+            ('camera/odom_visualization', 'camera/odom_visualization'),
+        ]
+    )
+
+    ekf_config_path = os.path.join(get_package_share_directory('pladypos'), 'config', 'ekf.yaml')
+
+    ekf_node = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        namespace=ns,
+        output='screen',
+        parameters=[
+            ekf_config_path,
+            {
+                'base_link_frame': f'{ns}/base_link'
+            }
+        ]
+    )
+
     return LaunchDescription([
         baud_arg,
         port_imu_arg,
@@ -118,6 +207,10 @@ def generate_launch_description():
         imu_driver_node,
         serial_bridge_node,
         teleop_mixer_node,
-        kinect_bridge_launch,
+        kinect_webcam_node,
+        ir_converter_node,
+        web_video_server_node,
+        visual_odometry_node,
+        ekf_node,
         filter_start_event
     ])

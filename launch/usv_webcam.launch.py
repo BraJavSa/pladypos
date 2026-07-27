@@ -40,7 +40,13 @@ def generate_launch_description():
         description='Port of the IMU'
     )
 
-    # Core nodes
+    port_arduino_arg = DeclareLaunchArgument(
+        'port_arduino',
+        default_value='auto',
+        description='Port of the Arduino'
+    )
+
+    # Core hardware nodes
     imu_driver_node = Node(
         package='pladypos',
         executable='imu_driver.py',
@@ -52,6 +58,26 @@ def generate_launch_description():
             'baud': LaunchConfiguration('baud'),
             'use_ned': True
         }]
+    )
+
+    serial_bridge_node = Node(
+        package='pladypos',
+        executable='serial_bridge.py',
+        name='serial_bridge_node',
+        namespace=ns,
+        output='screen',
+        parameters=[{
+            'port': LaunchConfiguration('port_arduino'),
+            'baud': LaunchConfiguration('baud')
+        }]
+    )
+
+    teleop_mixer_node = Node(
+        package='pladypos',
+        executable='teleop_mixer.py',
+        name='teleop_mixer_node',
+        namespace=ns,
+        output='screen'
     )
 
     complementary_filter_node = Node(
@@ -66,47 +92,18 @@ def generate_launch_description():
         ]
     )
 
-    # Launch Kinect v2 Bridge Node directly in 2D / Webcam mode (No PointCloud container)
-    kinect_webcam_node = Node(
-        package='kinect2_bridge',
-        executable='kinect2_bridge',
-        name='kinect2_bridge',
-        emulate_tty=True,
-        parameters=[{
-            'base_name': 'kinect2',
-            'sensor': '',
-            'publish_tf': False,        # Disable transform calculations
-            'worker_threads': 2,        # Restrict threads to save CPU
-            'fps_limit': -1.0,          # Correct double type
-            'use_png': False,
-            'jpeg_quality': 85,         # Compressed JPEG stream for WiFi efficiency
-            'png_level': 1,
-            'depth_method': 'default',
-            'reg_method': 'default'
-        }],
-        remappings=[
-            ('/kinect2/qhd/image_color_rect', f'/{ns}/camera/image_raw'),
-            ('/kinect2/qhd/image_color_rect/compressed', f'/{ns}/camera/image_raw/compressed'),
-            ('/kinect2/qhd/camera_info', f'/{ns}/camera/camera_info'),
-            ('/kinect2/sd/image_ir', f'/{ns}/camera/ir_raw'),
-            ('/kinect2/sd/image_ir/compressed', f'/{ns}/camera/ir_raw/compressed'),
-            ('/kinect2/sd/camera_info', f'/{ns}/camera/ir_camera_info'),
-        ],
-        output='screen'
-    )
-
-    ir_converter_node = Node(
+    # Webcam driver node (host camera /dev/video0)
+    camera_driver_node = Node(
         package='pladypos',
-        executable='depth_to_mono8.py',
-        name='ir_converter_node',
+        executable='camera_driver.py',
+        name='camera_driver_node',
+        namespace=ns,
         output='screen',
         parameters=[{
-            'input_topic': f'/{ns}/camera/ir_raw',
-            'output_topic': f'/{ns}/camera/ir',
-            'mode': 'ir',
-            'ir_scale': 0.02,
-            'width': 960,
-            'height': 540
+            'video_device': '/dev/video0',
+            'frame_rate': 15.0,
+            'image_width': 640,
+            'image_height': 480
         }]
     )
 
@@ -130,6 +127,7 @@ def generate_launch_description():
         output='screen'
     )
 
+    # Visual Odometry using the webcam stream
     visual_odometry_node = Node(
         package='pladypos',
         executable='visual_odometry.py',
@@ -175,9 +173,11 @@ def generate_launch_description():
     return LaunchDescription([
         baud_arg,
         port_imu_arg,
+        port_arduino_arg,
         imu_driver_node,
-        kinect_webcam_node,
-        ir_converter_node,
+        serial_bridge_node,
+        teleop_mixer_node,
+        camera_driver_node,
         web_video_server_node,
         visual_odometry_node,
         ekf_node,
