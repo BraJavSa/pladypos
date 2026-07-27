@@ -156,6 +156,32 @@ def generate_launch_description():
         output='screen'
     )
 
+    visual_odometry_node = Node(
+        package='pladypos',
+        executable='visual_odometry.py',
+        name='visual_odometry_node',
+        namespace=ns,
+        output='screen',
+        parameters=[{
+            'scale_factor': 0.003,      # Tunable scale factor
+            'min_features': 50,
+            'max_features': 150,
+            'publish_tf': True,
+            'odom_frame': 'odom',
+            'base_frame': f'{ns}/base_link',
+            'cam_x': 0.10,
+            'cam_y': 0.0,
+            'cam_z': 0.30
+        }],
+        remappings=[
+            ('camera/image_raw', 'camera/image_raw'),
+            ('camera/camera_info', 'camera/camera_info'),
+            ('camera/odom', 'camera/odom'),
+            ('camera/pose', 'camera/pose'),
+            ('camera/odom_visualization', 'camera/odom_visualization'),
+        ]
+    )
+
     return LaunchDescription([
         baud_arg,
         port_imu_arg,
@@ -166,5 +192,6 @@ def generate_launch_description():
         kinect_webcam_node,
         ir_converter_node,
         web_video_server_node,
+        visual_odometry_node,
         filter_start_event
     ])
