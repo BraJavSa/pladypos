@@ -113,22 +113,41 @@ def generate_launch_description():
         remappings=[
             ('/kinect2/qhd/image_color_rect', f'/{ns}/camera/image_raw'),
             ('/kinect2/qhd/image_color_rect/compressed', f'/{ns}/camera/image_raw/compressed'),
+            ('/kinect2/sd/image_depth_rect', f'/{ns}/camera/depth_raw'),
+            ('/kinect2/sd/image_depth_rect/compressed', f'/{ns}/camera/depth_raw/compressed'),
             ('/kinect2/sd/image_ir_rect', f'/{ns}/camera/ir_raw'),
             ('/kinect2/sd/image_ir_rect/compressed', f'/{ns}/camera/ir_raw/compressed'),
         ],
         output='screen'
     )
 
-    depth_to_mono8_node = Node(
+    depth_converter_node = Node(
         package='pladypos',
         executable='depth_to_mono8.py',
-        name='depth_to_mono8_node',
+        name='depth_converter_node',
+        output='screen',
+        parameters=[{
+            'input_topic': f'/{ns}/camera/depth_raw',
+            'output_topic': f'/{ns}/camera/depth',
+            'mode': 'depth',
+            'max_depth': 12.0,
+            'width': 960,
+            'height': 540
+        }]
+    )
+
+    ir_converter_node = Node(
+        package='pladypos',
+        executable='depth_to_mono8.py',
+        name='ir_converter_node',
         output='screen',
         parameters=[{
             'input_topic': f'/{ns}/camera/ir_raw',
-            'output_topic': f'/{ns}/camera/depth',
+            'output_topic': f'/{ns}/camera/ir',
             'mode': 'ir',
-            'ir_scale': 0.02
+            'ir_scale': 0.02,
+            'width': 960,
+            'height': 540
         }]
     )
 
@@ -160,7 +179,8 @@ def generate_launch_description():
         serial_bridge_node,
         teleop_mixer_node,
         kinect_webcam_node,
-        depth_to_mono8_node,
+        depth_converter_node,
+        ir_converter_node,
         web_video_server_node,
         filter_start_event
     ])
