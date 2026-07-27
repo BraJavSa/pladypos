@@ -39,12 +39,6 @@ def generate_launch_description():
         default_value='auto',
         description='Port of the IMU'
     )
-    
-    port_arduino_arg = DeclareLaunchArgument(
-        'port_arduino',
-        default_value='auto',
-        description='Port of the Arduino'
-    )
 
     # Core nodes
     imu_driver_node = Node(
@@ -58,26 +52,6 @@ def generate_launch_description():
             'baud': LaunchConfiguration('baud'),
             'use_ned': True
         }]
-    )
-
-    serial_bridge_node = Node(
-        package='pladypos',
-        executable='serial_bridge.py',
-        name='serial_bridge_node',
-        namespace=ns,
-        output='screen',
-        parameters=[{
-            'port': LaunchConfiguration('port_arduino'),
-            'baud': LaunchConfiguration('baud')
-        }]
-    )
-
-    teleop_mixer_node = Node(
-        package='pladypos',
-        executable='teleop_mixer.py',
-        name='teleop_mixer_node',
-        namespace=ns,
-        output='screen'
     )
 
     complementary_filter_node = Node(
@@ -201,10 +175,7 @@ def generate_launch_description():
     return LaunchDescription([
         baud_arg,
         port_imu_arg,
-        port_arduino_arg,
         imu_driver_node,
-        # serial_bridge_node,
-        # teleop_mixer_node,
         kinect_webcam_node,
         ir_converter_node,
         web_video_server_node,
