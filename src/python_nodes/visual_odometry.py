@@ -44,6 +44,7 @@ class VisualOdometry(Node):
 
         # Declare parameters
         self.declare_parameter('scale_factor', 0.003)      # Scale translation based on pixel motion
+        self.declare_parameter('min_displacement', 1.0)    # Min pixel displacement to register motion
         self.declare_parameter('min_features', 60)         # Redetect if tracked features drop below this
         self.declare_parameter('max_features', 150)        # Max features to detect
         self.declare_parameter('publish_tf', True)         # Publish odom -> base_link TF
@@ -57,6 +58,7 @@ class VisualOdometry(Node):
 
         # Get parameter values
         self.scale_factor = self.get_parameter('scale_factor').value
+        self.min_displacement = self.get_parameter('min_displacement').value
         self.min_features = self.get_parameter('min_features').value
         self.max_features = self.get_parameter('max_features').value
         self.publish_tf = self.get_parameter('publish_tf').value
@@ -214,30 +216,34 @@ class VisualOdometry(Node):
                     else:
                         mean_displacement = 0.0
 
-                    # Calculate scale factor based on displacement
-                    scale = mean_displacement * self.scale_factor
-                    
-                    # Update camera pose using calculated motion
-                    T_prev_curr = np.eye(4)
-                    T_prev_curr[0:3, 0:3] = R
-                    T_prev_curr[0:3, 3] = t.ravel() * scale
-                    
-                    # Integrate pose
-                    self.T_world_cam = self.T_world_cam @ T_prev_curr
-                    
-                    # Estimate velocities
-                    if dt > 0.0:
-                        self.linear_velocity = (t.ravel() * scale) / dt
-                        # Calculate angular velocities from rotation matrix
-                        sy = np.sqrt(R[0,0]*R[0,0] + R[1,0]*R[1,0])
-                        if sy > 1e-6:
-                            self.angular_velocity = np.array([
-                                np.arctan2(R[2,1], R[2,2]),
-                                np.arctan2(-R[2,0], sy),
-                                np.arctan2(R[1,0], R[0,0])
-                            ]) / dt
-                        else:
-                            self.angular_velocity = np.zeros(3)
+                    # If displacement is above threshold, update motion; otherwise keep stationary
+                    if mean_displacement > self.min_displacement:
+                        scale = mean_displacement * self.scale_factor
+                        
+                        # Update camera pose using calculated motion
+                        T_prev_curr = np.eye(4)
+                        T_prev_curr[0:3, 0:3] = R
+                        T_prev_curr[0:3, 3] = t.ravel() * scale
+                        
+                        # Integrate pose
+                        self.T_world_cam = self.T_world_cam @ T_prev_curr
+                        
+                        # Estimate velocities
+                        if dt > 0.0:
+                            self.linear_velocity = (t.ravel() * scale) / dt
+                            # Calculate angular velocities from rotation matrix
+                            sy = np.sqrt(R[0,0]*R[0,0] + R[1,0]*R[1,0])
+                            if sy > 1e-6:
+                                self.angular_velocity = np.array([
+                                    np.arctan2(R[2,1], R[2,2]),
+                                    np.arctan2(-R[2,0], sy),
+                                    np.arctan2(R[1,0], R[0,0])
+                                ]) / dt
+                            else:
+                                self.angular_velocity = np.zeros(3)
+                    else:
+                        self.linear_velocity = np.zeros(3)
+                        self.angular_velocity = np.zeros(3)
 
                 # Keep successfully tracked points for next iteration
                 self.prev_pts = good_curr.reshape(-1, 1, 2)
