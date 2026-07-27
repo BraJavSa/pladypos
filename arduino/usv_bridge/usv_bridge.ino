@@ -50,18 +50,13 @@ void setup() {
 
   // Initialize watchdog pin
   pinMode(7, OUTPUT);
-  digitalWrite(7, LOW);
+  digitalWrite(7, HIGH);
 }
 
 void loop() {
   unsigned long now = millis();
 
-  // Watchdog heartbeat (toggles Pin 7 at 1 Hz)
-  if (now - last_watchdog_time >= 1000) {
-    last_watchdog_time = now;
-    watchdog_state = !watchdog_state;
-    digitalWrite(7, watchdog_state ? HIGH : LOW);
-  }
+
 
   // Read commands from PC and Spektrum receiver
   readSerialPC();
