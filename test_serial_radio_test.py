@@ -66,28 +66,34 @@ try:
             expected = (payload_type + payload_len + sum(payload)) & 0xFF
             if expected == checksum_val:
                 now = time.time()
-                if now - last_print > 0.05:
-                    last_print = now
-                    if payload_type == 0x01:
-                        if len(payload) == 14:
-                            data_unpacked = struct.unpack('<7H', payload)
-                            channels = data_unpacked[:6]
-                            freq = data_unpacked[6]
+                if payload_type == 0x01:
+                    if len(payload) == 14:
+                        data_unpacked = struct.unpack('<7H', payload)
+                        channels = data_unpacked[:6]
+                        freq = data_unpacked[6]
+                        
+                        # Only print if values changed to prevent SSH/network buffering lag
+                        if 'prev_channels' not in locals() or prev_channels != channels:
+                            prev_channels = channels
                             sys.stdout.write(f"\r[Radio 0x01] Ch1: {channels[0]} | Ch2: {channels[1]} | Ch3: {channels[2]} | Freq: {freq} Hz      ")
-                        else:
-                            sys.stdout.write(f"\r[Radio 0x01] Got unexpected len {len(payload)}                      ")
-                    elif payload_type == 0x02:
-                        voltage = struct.unpack('<f', payload)[0]
-                        sys.stdout.write(f"\r[Telemetry 0x02] Voltage: {voltage:.2f} V                      ")
-                    elif payload_type == 0x03:
-                        counter = struct.unpack('<H', payload)[0]
-                        sys.stdout.write(f"\r[Counter 0x03] Val: {counter}                                  ")
+                            sys.stdout.flush()
                     else:
-                        sys.stdout.write(f"\r[Packet {payload_type:#x}] Len: {payload_len}                  ")
+                        sys.stdout.write(f"\r[Radio 0x01] Got unexpected len {len(payload)}                      ")
+                        sys.stdout.flush()
+                elif payload_type == 0x02:
+                    voltage = struct.unpack('<f', payload)[0]
+                    sys.stdout.write(f"\r[Telemetry 0x02] Voltage: {voltage:.2f} V                      ")
+                    sys.stdout.flush()
+                elif payload_type == 0x03:
+                    counter = struct.unpack('<H', payload)[0]
+                    sys.stdout.write(f"\r[Counter 0x03] Val: {counter}                                  ")
+                    sys.stdout.flush()
+                else:
+                    sys.stdout.write(f"\r[Packet {payload_type:#x}] Len: {payload_len}                  ")
                     sys.stdout.flush()
                 
                 # Consume this packet
-                byte_buffer = byte_buffer[total_len:]
+                byte_buffer = bytebuffer = byte_buffer[total_len:]
             else:
                 # Checksum failed, discard only the first 0xFF byte to look for next header
                 byte_buffer = byte_buffer[idx + 1:]
