@@ -183,11 +183,11 @@ class VisualOdometry(Node):
         # Filter out invalid points
         if status is not None:
             valid = (status == 1).reshape(-1)
-            good_prev = self.prev_pts[valid]
-            good_curr = curr_pts[valid]
+            good_prev = self.prev_pts[valid].reshape(-1, 2)
+            good_curr = curr_pts[valid].reshape(-1, 2)
         else:
-            good_prev = np.array([])
-            good_curr = np.array([])
+            good_prev = np.empty((0, 2))
+            good_curr = np.empty((0, 2))
 
         if len(good_curr) >= 15:
             try:
