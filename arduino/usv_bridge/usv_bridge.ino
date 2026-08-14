@@ -72,10 +72,10 @@ void loop() {
     // 1. Scale Radio Inputs to [-1.0, 1.0]
     // Ch1 (surge / u) -> min 342, max 1702, neutral 1023
     float surge = scale_input(spektrum_channels[0], 342, 1702);
-    // Ch2 (sway / v) -> right 343, left 1702, neutral 1023 (right negative, left positive)
-    float sway = scale_input(spektrum_channels[1], 343, 1702);
-    // Ch3 (yaw / r) -> CW 343, CCW 1702, neutral 1023 (CW negative, CCW positive)
-    float yaw = scale_input(spektrum_channels[2], 343, 1702);
+    // Ch2 (sway / v) -> right 343, left 1702, neutral 1023 (inverted to match physical vehicle orientation)
+    float sway = -scale_input(spektrum_channels[1], 343, 1702);
+    // Ch3 (yaw / r) -> CW 343, CCW 1702, neutral 1023 (inverted to match physical vehicle orientation)
+    float yaw = -scale_input(spektrum_channels[2], 343, 1702);
 
     // 2. Mix Motor Signals (X-configuration)
     float u_FR = surge - sway - yaw;
