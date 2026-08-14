@@ -213,19 +213,22 @@ void processPCPacket(uint8_t type, uint8_t *data, uint8_t len) {
 void readSpektrum() {
   static uint8_t packet[16];
   static uint8_t packet_idx = 0;
-  static unsigned long last_available_time = 0;
-  static bool gap_detected = false;
+  static unsigned long last_byte_time = 0;
 
   while (Serial1.available() > 0) {
-    if (gap_detected) {
-      packet_idx = 0;
-      gap_detected = false;
-    }
+    unsigned long now_u = micros();
+    uint8_t b = Serial1.read();
 
-    packet[packet_idx++] = Serial1.read();
-    last_available_time = micros();
+    // If more than 5ms (5000us) passed since the last byte, this byte marks the start of a new 16-byte frame
+    if (now_u - last_byte_time > 5000) {
+      packet_idx = 0;
+    }
+    last_byte_time = now_u;
+
+    packet[packet_idx++] = b;
 
     if (packet_idx == 16) {
+      packet_idx = 0;
       for (int i = 1; i < 8; ++i) {
         uint8_t b1 = packet[2 * i];
         uint8_t b2 = packet[2 * i + 1];
@@ -238,14 +241,9 @@ void readSpektrum() {
       spektrum_rx_count++;
       spektrum_received = true;
       last_spektrum_time = millis();
-      packet_idx = 0;
 
       sendSpektrumToPC();
     }
-  }
-
-  if (micros() - last_available_time > 5000) {
-    gap_detected = true;
   }
 }
 
