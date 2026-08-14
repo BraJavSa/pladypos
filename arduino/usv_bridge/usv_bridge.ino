@@ -62,11 +62,12 @@ void loop() {
   readSerialPC();
   readSpektrum();
 
-  // Mode Selection: Channel 4 (index 3 of spektrum_channels)
-  // > 1000 (e.g. 1705) -> Radio Priority
-  // < 1000 (e.g. 343) -> PC/Joy Priority
+  // Mode Selection based on Channel 4 (index 3 of spektrum_channels):
+  // > 1000 (e.g. 1705) -> Radio Mode ONLY (Direct Spektrum control)
+  // <= 1000 (e.g. 343) -> Joystick Mode ONLY (PC control via ROS 2 teleop_mixer)
   // Default to PC mode if no radio signal received in last 500ms
-  bool is_radio_mode = spektrum_received && (now - last_spektrum_time < 500) && (spektrum_channels[3] > 1000);
+  const uint16_t MODE_THRESHOLD = 1000;
+  bool is_radio_mode = spektrum_received && (now - last_spektrum_time < 500) && (spektrum_channels[3] > MODE_THRESHOLD);
 
   if (is_radio_mode) {
     // 1. Scale Radio Inputs to [-1.0, 1.0]
