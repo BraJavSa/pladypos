@@ -21,7 +21,7 @@ class SerialBridge(Node):
         self.baud = self.get_parameter('baud').value
 
         self.spektrum_pub = self.create_publisher(Int16MultiArray, 'spektrum', 10)
-        self.joy_pub = self.create_publisher(Joy, 'joy', 10)
+        self.joy_pub = self.create_publisher(Joy, 'spektrum_joy', 10)
         self.motor_feedback_pub = self.create_publisher(Float32MultiArray, 'motor_feedback', 10)
 
         self.pwm_sub = self.create_subscription(
