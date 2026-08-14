@@ -138,11 +138,15 @@ Choose one of the following unified launcher options:
 
 * **Option A: Full RGB-D & 3D PointCloud Mode** (Vehicle controls + full 3D point cloud streaming):
   ```bash
-  ros2 launch pladypos usv_kinect.launch.py
+  ros2 launch pladypos kinect.launch.py
   ```
 * **Option B: Webcam-Only Mode** (Vehicle controls + 2D color image streaming only; disables heavy depth/pointcloud processing to save CPU and Wi-Fi bandwidth):
   ```bash
-  ros2 launch pladypos usv_webcam.launch.py
+  ros2 launch pladypos webcam.launch.py
+  ```
+* **Option C: Core Hardware Mode** (Vehicle controls only):
+  ```bash
+  ros2 launch pladypos core.launch.py
   ```
 
 ### 4.2 On the GCS (PC with Joystick)
