@@ -18,6 +18,12 @@ class TeleopMixer(Node):
             10
         )
         
+        # Declare ROS 2 parameters for deadzone and axis inversions
+        self.declare_parameter('yaw_deadzone', 0.15)
+        self.declare_parameter('invert_yaw', True)
+        self.declare_parameter('invert_sway', True)
+        self.declare_parameter('invert_surge', False)
+
         # Load motor mapping config with default fallback
         self.motor_map = {
             1: "Front Right (FR)",
@@ -39,13 +45,37 @@ class TeleopMixer(Node):
         else:
             self.get_logger().info("No motor mapping file found. Using default mapping.")
 
+    def apply_deadzone(self, value: float, deadzone: float) -> float:
+        if abs(value) < deadzone:
+            return 0.0
+        sign = 1.0 if value > 0.0 else -1.0
+        return sign * (abs(value) - deadzone) / (1.0 - deadzone)
+
     def joy_callback(self, msg):
         if len(msg.axes) < 3:
             return
 
-        sway = msg.axes[0]
-        surge = msg.axes[1]
-        yaw = msg.axes[2]
+        yaw_deadzone = self.get_parameter('yaw_deadzone').get_parameter_value().double_value
+        invert_yaw = self.get_parameter('invert_yaw').get_parameter_value().bool_value
+        invert_sway = self.get_parameter('invert_sway').get_parameter_value().bool_value
+        invert_surge = self.get_parameter('invert_surge').get_parameter_value().bool_value
+
+        sway_raw = msg.axes[0]
+        surge_raw = msg.axes[1]
+        yaw_raw = msg.axes[2]
+
+        # Apply rotational deadzone
+        yaw = self.apply_deadzone(yaw_raw, yaw_deadzone)
+        sway = sway_raw
+        surge = surge_raw
+
+        # Invert directions based on configuration
+        if invert_sway:
+            sway = -sway
+        if invert_surge:
+            surge = -surge
+        if invert_yaw:
+            yaw = -yaw
 
         # Calculate standard thrust values for each physical position
         u_FR = surge - sway - yaw
