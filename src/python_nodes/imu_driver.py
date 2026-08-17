@@ -38,7 +38,7 @@ class IMUDriver(Node):
         else:
             self.connect_serial()
 
-        self.create_timer(0.01, self.read_serial)
+        self.create_timer(0.005, self.read_serial)
 
     def connect_serial(self):
         try:
@@ -47,7 +47,7 @@ class IMUDriver(Node):
                     self.ser.close()
                 except Exception:
                     pass
-            self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
+            self.ser = serial.Serial(self.port, self.baud, timeout=0.05)
             self.get_logger().info(f"Connected to IMU on {self.port} at {self.baud} baud.")
         except Exception as e:
             self.get_logger().warn(f"Could not open IMU port {self.port}: {e}")
@@ -114,7 +114,7 @@ class IMUDriver(Node):
             return
 
         try:
-            if self.ser.in_waiting > 0:
+            while self.ser.in_waiting > 0:
                 line = self.ser.readline().decode('utf-8', errors='ignore').strip()
                 if ',' in line:
                     parts = line.split(',')

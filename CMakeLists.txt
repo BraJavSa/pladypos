@@ -16,7 +16,8 @@ install(PROGRAMS
   src/python_nodes/camera_driver.py
   src/python_nodes/kinect_to_v4l2.py
   src/python_nodes/depth_to_mono8.py
-  src/python_nodes/visual_odometry.py
+  src/python_nodes/client_bridge.py
+  src/python_nodes/apriltag_detector.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
