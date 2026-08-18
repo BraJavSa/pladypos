@@ -55,26 +55,14 @@ class PoseImuOdometryNode(Node):
         # Timer a 10 Hz
         timer_period = 1.0 / self.rate
         self.create_timer(timer_period, self.timer_callback)
-        self.create_timer(3.0, self.diag_callback)
 
         self.get_logger().info(
             f"Nodo pose_imu_odometry iniciado.\n"
             f"  Pose: {self.pose_topic}\n"
-            f"  IMU: {self.imu_topic} (/usv5/imu/data_raw)\n"
+            f"  IMU: {self.imu_topic}\n"
             f"  Odometría: {self.odom_topic} @ {self.rate} Hz\n"
             f"  TF: {self.frame_id} -> {self.child_frame_id}"
         )
-
-    def diag_callback(self):
-        if self.pose_count == 0:
-            self.get_logger().warn(f"Esperando datos en {self.pose_topic} (AprilTag no detectado aún)...")
-        else:
-            self.get_logger().info(f"Pose OK! Recibidos {self.pose_count} mensajes de pose.")
-
-        if self.imu_count == 0:
-            self.get_logger().warn("Esperando datos de la IMU en /imu/data o /usv5/imu/data_raw...")
-        else:
-            self.get_logger().info(f"IMU OK! Recibidos {self.imu_count} mensajes de IMU. Yaw actual: {math.degrees(self.yaw):.2f}°")
 
     def pose_callback(self, msg: PoseStamped):
         self.pose_count += 1
@@ -144,11 +132,11 @@ class PoseImuOdometryNode(Node):
             odom_msg.pose.pose.position.y = 0.0
             odom_msg.pose.pose.position.z = 0.0
 
-        # Orientación y Velocidad Angular desde la IMU (o integración de Yaw de respaldo)
+        # Orientación y Yaw actual en sistema FLU
+        current_yaw = self.yaw
         if self.latest_imu is not None:
             ori = self.latest_imu.orientation
             if ori.w == 0.0 and ori.x == 0.0 and ori.y == 0.0 and ori.z == 0.0:
-                # Calcular orientación cuaternión desde el Yaw integrado
                 half_yaw = self.yaw * 0.5
                 odom_msg.pose.pose.orientation.w = math.cos(half_yaw)
                 odom_msg.pose.pose.orientation.x = 0.0
@@ -156,6 +144,10 @@ class PoseImuOdometryNode(Node):
                 odom_msg.pose.pose.orientation.z = math.sin(half_yaw)
             else:
                 odom_msg.pose.pose.orientation = ori
+                # Extraer yaw de la IMU para transformación a chasis FLU
+                siny_cosp = 2.0 * (ori.w * ori.z + ori.x * ori.y)
+                cosy_cosp = 1.0 - 2.0 * (ori.y * ori.y + ori.z * ori.z)
+                current_yaw = math.atan2(siny_cosp, cosy_cosp)
             odom_msg.twist.twist.angular = self.latest_imu.angular_velocity
         else:
             half_yaw = self.yaw * 0.5
@@ -164,9 +156,11 @@ class PoseImuOdometryNode(Node):
             odom_msg.pose.pose.orientation.y = 0.0
             odom_msg.pose.pose.orientation.z = math.sin(half_yaw)
 
-        # Velocidad lineal estimada
-        odom_msg.twist.twist.linear.x = self.vx
-        odom_msg.twist.twist.linear.y = self.vy
+        # Velocidad lineal en el marco FLU del vehículo (X = Frente, Y = Izquierda)
+        cos_y = math.cos(current_yaw)
+        sin_y = math.sin(current_yaw)
+        odom_msg.twist.twist.linear.x = self.vx * cos_y + self.vy * sin_y
+        odom_msg.twist.twist.linear.y = -self.vx * sin_y + self.vy * cos_y
         odom_msg.twist.twist.linear.z = 0.0
 
         self.odom_pub.publish(odom_msg)

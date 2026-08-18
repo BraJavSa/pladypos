@@ -56,7 +56,8 @@ def generate_launch_description():
         parameters=[{
             'port': LaunchConfiguration('port_imu'),
             'baud': LaunchConfiguration('baud'),
-            'use_ned': True
+            'use_ned': False,
+            'use_flu': True
         }]
     )
 
