@@ -15,12 +15,18 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image, CompressedImage, CameraInfo
 
 class RemoteCameraBridgeNode(Node):
-    def __init__(self, host_ip="10.250.253.1", camera_topic="/camera_0354/camera_0354/image_raw"):
+    def __init__(self):
         super().__init__('remote_camera_bridge')
         
-        self.host_ip = host_ip
-        self.camera_topic = camera_topic
-        self.stream_url = f"http://{self.host_ip}:8082/stream?topic={self.camera_topic}&type=mjpeg"
+        self.declare_parameter('host_ip', '10.250.253.1')
+        self.declare_parameter('camera_topic', '/camera_0354/camera_0354/image_raw')
+        self.declare_parameter('port', 8082)
+        
+        self.host_ip = str(self.get_parameter('host_ip').value)
+        self.camera_topic = str(self.get_parameter('camera_topic').value)
+        self.port = int(self.get_parameter('port').value)
+        
+        self.stream_url = f"http://{self.host_ip}:{self.port}/stream?topic={self.camera_topic}&type=mjpeg"
         
         # Publicadores limpios
         self.pub_raw = self.create_publisher(Image, '/camera_0354/image_raw', 10)
@@ -126,10 +132,7 @@ class RemoteCameraBridgeNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    host_ip = sys.argv[1] if len(sys.argv) > 1 else "10.250.253.1"
-    topic = sys.argv[2] if len(sys.argv) > 2 else "/camera_0354/camera_0354/image_raw"
-    
-    node = RemoteCameraBridgeNode(host_ip=host_ip, camera_topic=topic)
+    node = RemoteCameraBridgeNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

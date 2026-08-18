@@ -18,6 +18,7 @@ install(PROGRAMS
   src/python_nodes/depth_to_mono8.py
   src/python_nodes/client_bridge.py
   src/python_nodes/apriltag_detector.py
+  src/python_nodes/pose_imu_odometry.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
