@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-# Remover ROS_DISCOVERY_SERVER para asegurar el descubrimiento DDS nativo por multicast en la red local
 os.environ.pop("ROS_DISCOVERY_SERVER", None)
 
 import sys
