@@ -20,6 +20,8 @@ class PoseImuOdometryNode(Node):
         self.declare_parameter('frame_id', 'odom')
         self.declare_parameter('child_frame_id', 'usv5')
         self.declare_parameter('publish_tf', True)
+        self.declare_parameter('invert_yaw', True)
+        self.declare_parameter('invert_z', True)
 
         self.pose_topic = self.get_parameter('pose_topic').value
         self.imu_topic = self.get_parameter('imu_topic').value
@@ -28,6 +30,8 @@ class PoseImuOdometryNode(Node):
         self.frame_id = self.get_parameter('frame_id').value
         self.child_frame_id = self.get_parameter('child_frame_id').value
         self.publish_tf = self.get_parameter('publish_tf').value
+        self.invert_yaw = self.get_parameter('invert_yaw').value
+        self.invert_z = self.get_parameter('invert_z').value
 
         # Publicador de Odometría
         self.odom_pub = self.create_publisher(Odometry, self.odom_topic, 10)
@@ -84,7 +88,8 @@ class PoseImuOdometryNode(Node):
         if self.last_imu_time is not None:
             dt = now - self.last_imu_time
             if 0.0001 < dt < 1.0:
-                self.yaw += msg.angular_velocity.z * dt
+                wz = -msg.angular_velocity.z if self.invert_yaw else msg.angular_velocity.z
+                self.yaw += wz * dt
 
         self.last_imu_time = now
         self.latest_imu = msg
@@ -132,29 +137,31 @@ class PoseImuOdometryNode(Node):
             odom_msg.pose.pose.position.y = 0.0
             odom_msg.pose.pose.position.z = 0.0
 
-        # Orientación y Yaw actual en sistema FLU
-        current_yaw = self.yaw
-        if self.latest_imu is not None:
+        # Orientación y Yaw actual en sistema FLU (Invertido 180° para Z arriba)
+        self.yaw_flu = -self.yaw
+        half_yaw = self.yaw_flu * 0.5
+
+        if self.latest_imu is not None and not (self.latest_imu.orientation.w == 0.0 and self.latest_imu.orientation.x == 0.0):
             ori = self.latest_imu.orientation
-            if ori.w == 0.0 and ori.x == 0.0 and ori.y == 0.0 and ori.z == 0.0:
-                half_yaw = self.yaw * 0.5
-                odom_msg.pose.pose.orientation.w = math.cos(half_yaw)
-                odom_msg.pose.pose.orientation.x = 0.0
-                odom_msg.pose.pose.orientation.y = 0.0
-                odom_msg.pose.pose.orientation.z = math.sin(half_yaw)
-            else:
-                odom_msg.pose.pose.orientation = ori
-                # Extraer yaw de la IMU para transformación a chasis FLU
-                siny_cosp = 2.0 * (ori.w * ori.z + ori.x * ori.y)
-                cosy_cosp = 1.0 - 2.0 * (ori.y * ori.y + ori.z * ori.z)
-                current_yaw = math.atan2(siny_cosp, cosy_cosp)
-            odom_msg.twist.twist.angular = self.latest_imu.angular_velocity
+            # Rotación de 180° en X/Y para voltear el eje Z hacia arriba (Z Up)
+            odom_msg.pose.pose.orientation.w = -ori.x
+            odom_msg.pose.pose.orientation.x = ori.w
+            odom_msg.pose.pose.orientation.y = ori.z
+            odom_msg.pose.pose.orientation.z = -ori.y
+
+            o = odom_msg.pose.pose.orientation
+            siny_cosp = 2.0 * (o.w * o.z + o.x * o.y)
+            cosy_cosp = 1.0 - 2.0 * (o.y * o.y + o.z * o.z)
+            current_yaw = math.atan2(siny_cosp, cosy_cosp)
+            odom_msg.twist.twist.angular.z = -self.latest_imu.angular_velocity.z
         else:
-            half_yaw = self.yaw * 0.5
             odom_msg.pose.pose.orientation.w = math.cos(half_yaw)
             odom_msg.pose.pose.orientation.x = 0.0
             odom_msg.pose.pose.orientation.y = 0.0
             odom_msg.pose.pose.orientation.z = math.sin(half_yaw)
+            current_yaw = self.yaw_flu
+            if self.latest_imu is not None:
+                odom_msg.twist.twist.angular.z = -self.latest_imu.angular_velocity.z
 
         # Velocidad lineal en el marco FLU del vehículo (X = Frente, Y = Izquierda)
         cos_y = math.cos(current_yaw)
