@@ -166,7 +166,7 @@ OBJ_PTS = np.array([
 #   por lo tanto yaw_flu = -atan2(R[1,0], R[0,0]).
 #   Offset +π/2 porque el frente del robot coincide con el eje Y del tag.
 
-_YAW_OFFSET = math.pi / 2.0   # frente del robot = tag Y → +90°
+_YAW_OFFSET = math.pi / 2.0 + math.pi   # frente del robot + 90° + 180° (rotación 180° respecto a Y)
 
 
 def estimate_pose(corners_px, K, dist):
@@ -178,8 +178,8 @@ def estimate_pose(corners_px, K, dist):
       x =  tvec[0]
       y = -tvec[1]   (cámara Y apunta abajo, mundo Y apunta "arriba-en-imagen")
 
-    Yaw (FLU, CCW+ visto desde arriba):
-      yaw = -atan2(R[1,0], R[0,0]) + π/2
+    Yaw (FLU, CCW+ visto desde arriba, con 180° adicionales):
+      yaw = -atan2(R[1,0], R[0,0]) + π/2 + π
     """
     try:
         ok, rvec, tvec = cv2.solvePnP(
@@ -193,7 +193,8 @@ def estimate_pose(corners_px, K, dist):
         depth = max(float(tvec.flat[2]), 0.1)
 
         R, _  = cv2.Rodrigues(rvec)
-        yaw   = -math.atan2(float(R[1, 0]), float(R[0, 0])) + _YAW_OFFSET
+        raw_yaw = -math.atan2(float(R[1, 0]), float(R[0, 0])) + _YAW_OFFSET
+        yaw = (raw_yaw + math.pi) % (2 * math.pi) - math.pi
 
         return x, y, yaw, depth
     except Exception:
