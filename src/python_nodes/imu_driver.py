@@ -158,22 +158,22 @@ class IMUDriver(Node):
                             imu_msg.angular_velocity.y = -gyro[1] * math.pi / 180.0
                             imu_msg.angular_velocity.z = gyro[2] * math.pi / 180.0
                         else:
-                            # FLU Frame: Rotación 180° en X seguida de 180° en Z
-                            imu_msg.linear_acceleration.x = -acc[0] * 9.8065
+                            # Standard FLU Frame (Forward: +X, Left: +Y, Up: +Z)
+                            imu_msg.linear_acceleration.x = acc[0] * 9.8065
                             imu_msg.linear_acceleration.y = acc[1] * 9.8065
-                            imu_msg.linear_acceleration.z = -acc[2] * 9.8065
-                            imu_msg.angular_velocity.x = -gyro[0] * math.pi / 180.0
+                            imu_msg.linear_acceleration.z = acc[2] * 9.8065
+                            imu_msg.angular_velocity.x = gyro[0] * math.pi / 180.0
                             imu_msg.angular_velocity.y = gyro[1] * math.pi / 180.0
-                            imu_msg.angular_velocity.z = -gyro[2] * math.pi / 180.0
+                            imu_msg.angular_velocity.z = gyro[2] * math.pi / 180.0
 
                         self.imu_pub.publish(imu_msg)
 
                         mag_msg = MagneticField()
                         mag_msg.header.stamp = imu_msg.header.stamp
                         mag_msg.header.frame_id = 'imu_link'
-                        mag_msg.magnetic_field.x = -mag[0] * 1e-7 if not self.use_ned else -mag[1] * 1e-7
+                        mag_msg.magnetic_field.x = mag[0] * 1e-7 if not self.use_ned else -mag[1] * 1e-7
                         mag_msg.magnetic_field.y = mag[1] * 1e-7 if not self.use_ned else -mag[0] * 1e-7
-                        mag_msg.magnetic_field.z = -mag[2] * 1e-7 if not self.use_ned else -mag[2] * 1e-7
+                        mag_msg.magnetic_field.z = mag[2] * 1e-7 if not self.use_ned else -mag[2] * 1e-7
 
                         self.mag_pub.publish(mag_msg)
 
