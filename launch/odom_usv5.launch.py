@@ -1,60 +1,37 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
+import os
 
 def generate_launch_description():
-    camera_arg = DeclareLaunchArgument(
-        'camera',
-        default_value='0354',
-        description='ID de la cámara (ej. 0354, 9835, 0352, 0353)'
+
+    ekf_config = os.path.join(
+        get_package_share_directory('pladypos'),
+        'config', 'ekf.yaml'
     )
 
-    host_arg = DeclareLaunchArgument(
-        'host',
-        default_value='10.250.253.1',
-        description='IP del servidor / Stream Guard Proxy'
-    )
-
-    port_arg = DeclareLaunchArgument(
-        'port',
-        default_value='8083',
-        description='Puerto del Stream Guard Proxy'
-    )
-
-    stream_viewer_node = Node(
+    # 1. Detección de AprilTag → publica /usv5/odom (pose raw + covarianza) + TF
+    apriltag_node = Node(
         package='pladypos',
-        executable='stream_viewer.py',
-        name='stream_viewer_node',
+        executable='apriltag_pose.py',
+        name='apriltag_pose',
         output='screen',
-        arguments=[
-            '--camera', LaunchConfiguration('camera'),
-            '--host', LaunchConfiguration('host'),
-            '--port', LaunchConfiguration('port')
+    )
+
+    # 2. EKF: fusiona /usv5/odom (tag) + /imu/data (opcional)
+    #    → publica /odometry/filtered + TF odom→usv5 suavizado
+    ekf_node = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_usv5',
+        output='screen',
+        parameters=[ekf_config],
+        remappings=[
+            ('odometry/filtered', '/usv5/odom_filtered'),
         ]
     )
 
-    # 2. Nodo de Odometría USV5 (/usv5/pose + IMU -> /usv5/odom a 10 Hz)
-    pose_imu_odometry_node = Node(
-        package='pladypos',
-        executable='pose_imu_odometry.py',
-        name='pose_imu_odometry_node',
-        output='screen',
-        parameters=[{
-            'pose_topic': '/usv5/pose',
-            'imu_topic': '/imu/data',
-            'odom_topic': '/usv5/odom',
-            'publish_rate': 10.0,
-            'frame_id': 'odom',
-            'child_frame_id': 'usv5',
-            'publish_tf': True
-        }]
-    )
-
     return LaunchDescription([
-        camera_arg,
-        host_arg,
-        port_arg,
-        stream_viewer_node,
-        pose_imu_odometry_node
+        apriltag_node,
+        ekf_node,
     ])

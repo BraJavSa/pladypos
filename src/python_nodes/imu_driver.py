@@ -159,12 +159,13 @@ class IMUDriver(Node):
                             imu_msg.angular_velocity.z = gyro[2] * math.pi / 180.0
                         else:
                             # FLU Frame (Forward: +X, Left: +Y, Up: +Z)
-                            imu_msg.linear_acceleration.x = acc[0] * 9.8065
-                            imu_msg.linear_acceleration.y = acc[1] * 9.8065
-                            imu_msg.linear_acceleration.z = acc[2] * 9.8065
-                            imu_msg.angular_velocity.x = gyro[0] * math.pi / 180.0
-                            imu_msg.angular_velocity.y = gyro[1] * math.pi / 180.0
-                            imu_msg.angular_velocity.z = gyro[2] * math.pi / 180.0
+                            # Sensor raw es FRD → negar Y y Z para FLU
+                            imu_msg.linear_acceleration.x =  acc[0] * 9.8065
+                            imu_msg.linear_acceleration.y = -acc[1] * 9.8065
+                            imu_msg.linear_acceleration.z = -acc[2] * 9.8065
+                            imu_msg.angular_velocity.x =  gyro[0] * math.pi / 180.0
+                            imu_msg.angular_velocity.y = -gyro[1] * math.pi / 180.0
+                            imu_msg.angular_velocity.z = -gyro[2] * math.pi / 180.0
 
                         self.imu_pub.publish(imu_msg)
 

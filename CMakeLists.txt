@@ -16,8 +16,9 @@ install(PROGRAMS
   src/python_nodes/camera_driver.py
   src/python_nodes/kinect_to_v4l2.py
   src/python_nodes/depth_to_mono8.py
-  src/python_nodes/stream_viewer.py
   src/python_nodes/pose_imu_odometry.py
+  src/python_nodes/apriltag_pose.py
+  src/python_nodes/record_orientation.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

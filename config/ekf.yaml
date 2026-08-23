@@ -1,35 +1,55 @@
-++/**:
+/**:
   ros__parameters:
     frequency: 30.0
     two_d_mode: true
     publish_tf: true
 
-    odom_frame: odom
-    base_link_frame: base_link  # Will be resolved relative to the node's namespace if frame_prefix is used, or we set it dynamically in launch
-    world_frame: odom
+    odom_frame:      odom
+    base_link_frame: usv5
+    world_frame:     odom
 
-    # Odom0: Visual Odometry
-    odom0: camera/odom
-    odom0_config: [false, false, false,  # Do not fuse absolute position (highly vulnerable to jumps)
-                   false, false, false,  # Do not fuse orientation (leave to IMU)
-                   true,  true,  false,  # Fuse X, Y linear velocity
+    # ── Fuente primaria: Odometría AprilTag ────────────────────────────────────
+    odom0: /usv5/odom
+    odom0_config: [true,  true,  false,   # X, Y (posición absoluta)
+                   false, false, true,    # Yaw (orientación absoluta)
+                   false, false, false,
                    false, false, false,
                    false, false, false]
     odom0_differential: false
-    odom0_relative: false
-    odom0_queue_size: 2
-    odom0_threshold: 2.0  # Reject outliers (e.g. moving people) inconsistent with the IMU
+    odom0_relative:     false
+    odom0_queue_size:   5
+    odom0_pose_use_child_frame: false
 
-    # Imu0: IMU complementary filter
-    imu0: imu/data
+    # ── Fuente secundaria: IMU (opcional) ─────────────────────────────────────
+    imu0: /usv5/imu/data
     imu0_config: [false, false, false,
-                  true,  true,  true,   # Fuse Roll, Pitch, Yaw
+                  false, false, true,    # Yaw de IMU
                   false, false, false,
-                  true,  true,  true,   # Fuse angular velocities
-                  true,  true,  false]  # Fuse linear acceleration X, Y (no Z acceleration for 2D mode)
+                  false, false, true,    # Gyro Z
+                  false, false, false]
     imu0_differential: false
-    imu0_relative: false
-    imu0_queue_size: 5
+    imu0_relative:     false
+    imu0_queue_size:   10
     imu0_remove_gravitational_acceleration: true
+
+    # ── Matriz de Ruido del Proceso (Process Noise Covariance Q) ───────────────
+    # Valores equilibrados (1e-2) para respuesta rápida sin retraso/lag
+    process_noise_covariance: [
+      1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # X
+      0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Y
+      0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Z
+      0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Roll
+      0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Pitch
+      0.0,  0.0,  0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Yaw
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Vx
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Vy
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Vz
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  # Vroll
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  # Vpitch
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  # Vyaw
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  # Ax
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  # Ay
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6   # Az
+    ]
 
     use_control: false
