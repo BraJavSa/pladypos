@@ -72,6 +72,24 @@ def generate_launch_description():
         output='screen'
     )
 
+    complementary_filter_node = Node(
+        package='imu_complementary_filter',
+        executable='complementary_filter_node',
+        name='complementary_filter_node',
+        namespace=ns,
+        output='screen',
+        remappings=[
+            ('imu/data_raw', 'imu/data_raw'),
+            ('imu/mag', 'imu/mag')
+        ]
+    )
+
+    filter_start_event = RegisterEventHandler(
+        OnProcessStart(
+            target_action=imu_driver_node,
+            on_start=[complementary_filter_node]
+        )
+    )
 
     return LaunchDescription([
         baud_arg,
@@ -80,4 +98,5 @@ def generate_launch_description():
         imu_driver_node,
         serial_bridge_node,
         teleop_mixer_node,
+        filter_start_event
     ])
