@@ -47,8 +47,7 @@ def generate_launch_description():
         parameters=[{
             'port': LaunchConfiguration('port_imu'),
             'baud': LaunchConfiguration('baud'),
-            'use_ned': False,
-            'use_flu': True
+            'use_ned': False
         }]
     )
 
@@ -78,6 +77,10 @@ def generate_launch_description():
         name='complementary_filter_node',
         namespace=ns,
         output='screen',
+        parameters=[{
+            'use_mag': True,
+            'publish_tf': False
+        }],
         remappings=[
             ('imu/data_raw', 'imu/data_raw'),
             ('imu/mag', 'imu/mag')

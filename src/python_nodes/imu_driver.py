@@ -148,18 +148,23 @@ class IMUDriver(Node):
                         ]
 
                         if self.use_ned:
-                            imu_msg.linear_acceleration.x = -acc[0] * 9.8065
-                            imu_msg.linear_acceleration.y = -acc[1] * 9.8065
+                            # Publicar raw NED (X Frente, Y Derecha, Z Abajo)
+                            imu_msg.linear_acceleration.x = acc[0] * 9.8065
+                            imu_msg.linear_acceleration.y = acc[1] * 9.8065
                             imu_msg.linear_acceleration.z = acc[2] * 9.8065
-                            imu_msg.angular_velocity.x = -gyro[0] * math.pi / 180.0
-                            imu_msg.angular_velocity.y = -gyro[1] * math.pi / 180.0
+
+                            imu_msg.angular_velocity.x = gyro[0] * math.pi / 180.0
+                            imu_msg.angular_velocity.y = gyro[1] * math.pi / 180.0
                             imu_msg.angular_velocity.z = gyro[2] * math.pi / 180.0
                         else:
-                            imu_msg.linear_acceleration.x = -acc[0] * 9.8065
-                            imu_msg.linear_acceleration.y = acc[1] * 9.8065
+                            # Transformar de NED a FLU (Estándar ROS: X Frente, Y Izquierda, Z Arriba)
+                            # Esto invierte Y y Z para que el filtro complementario lo procese correctamente como ENU/FLU
+                            imu_msg.linear_acceleration.x = acc[0] * 9.8065
+                            imu_msg.linear_acceleration.y = -acc[1] * 9.8065
                             imu_msg.linear_acceleration.z = -acc[2] * 9.8065
-                            imu_msg.angular_velocity.x = -gyro[0] * math.pi / 180.0
-                            imu_msg.angular_velocity.y = gyro[1] * math.pi / 180.0
+
+                            imu_msg.angular_velocity.x = gyro[0] * math.pi / 180.0
+                            imu_msg.angular_velocity.y = -gyro[1] * math.pi / 180.0
                             imu_msg.angular_velocity.z = -gyro[2] * math.pi / 180.0
 
                         self.imu_pub.publish(imu_msg)
@@ -167,9 +172,15 @@ class IMUDriver(Node):
                         mag_msg = MagneticField()
                         mag_msg.header.stamp = imu_msg.header.stamp
                         mag_msg.header.frame_id = 'imu_link'
-                        mag_msg.magnetic_field.x = -mag[1] * 1e-7
-                        mag_msg.magnetic_field.y = -mag[0] * 1e-7 if self.use_ned else mag[0] * 1e-7
-                        mag_msg.magnetic_field.z = -mag[2] * 1e-7 if self.use_ned else mag[2] * 1e-7
+                        
+                        if self.use_ned:
+                            mag_msg.magnetic_field.x = mag[0] * 1e-7
+                            mag_msg.magnetic_field.y = mag[1] * 1e-7
+                            mag_msg.magnetic_field.z = mag[2] * 1e-7
+                        else:
+                            mag_msg.magnetic_field.x = mag[0] * 1e-7
+                            mag_msg.magnetic_field.y = -mag[1] * 1e-7
+                            mag_msg.magnetic_field.z = -mag[2] * 1e-7
 
                         self.mag_pub.publish(mag_msg)
 
