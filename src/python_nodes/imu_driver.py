@@ -11,6 +11,15 @@ import threading
 from sensor_msgs.msg import Imu, MagneticField
 
 class IMUDriver(Node):
+
+    # Matriz de rotación 180° alrededor del eje Y
+    # Rot_y(180) = [[-1, 0, 0], [0, 1, 0], [0, 0, -1]]
+    ROT_Y_180 = (
+        (-1.0, 0.0,  0.0),
+        ( 0.0, 1.0,  0.0),
+        ( 0.0, 0.0, -1.0),
+    )
+
     def __init__(self):
         super().__init__('imu_driver')
 
@@ -30,6 +39,15 @@ class IMUDriver(Node):
         self._thread = None
 
         self.start()
+
+    @staticmethod
+    def rotate_vector(v, R):
+        """Multiplica el vector v (largo 3) por la matriz de rotación R (3x3)."""
+        return [
+            R[0][0] * v[0] + R[0][1] * v[1] + R[0][2] * v[2],
+            R[1][0] * v[0] + R[1][1] * v[1] + R[1][2] * v[2],
+            R[2][0] * v[0] + R[2][1] * v[1] + R[2][2] * v[2],
+        ]
 
     def start(self):
         self._stop.clear()
@@ -88,7 +106,7 @@ class IMUDriver(Node):
 
         candidates = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
         candidates = sorted(list(set([os.path.realpath(c) for c in candidates])))
-        
+
         for port in candidates:
             if port == arduino_port:
                 continue
@@ -132,6 +150,12 @@ class IMUDriver(Node):
                             mag = [float(x) for x in parts[7:10]]
                         except ValueError:
                             continue
+
+                        # --- Rotación 180° en Y aplicada vía matriz a los 3 vectores ---
+                        acc = self.rotate_vector(acc, self.ROT_Y_180)
+                        gyro = self.rotate_vector(gyro, self.ROT_Y_180)
+                        mag = self.rotate_vector(mag, self.ROT_Y_180)
+                        # ----------------------------------------------------------------
 
                         stamp = self.get_clock().now().to_msg()
 
