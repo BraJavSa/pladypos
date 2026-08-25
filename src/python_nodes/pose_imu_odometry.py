@@ -3,7 +3,7 @@
 import rclpy
 from rclpy.node import Node
 import math
-from geometry_msgs.msg import PoseStamped, TransformStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
 from sensor_msgs.msg import Imu
 from nav_msgs.msg import Odometry
 import tf2_ros
@@ -19,7 +19,7 @@ class PoseImuOdometryNode(Node):
         self.declare_parameter('publish_rate', 10.0)  # 10 Hz
         self.declare_parameter('frame_id', 'odom')
         self.declare_parameter('child_frame_id', 'usv5')
-        self.declare_parameter('publish_tf', True)
+        self.declare_parameter('publish_tf', False)
         self.declare_parameter('invert_yaw', True)
         self.declare_parameter('invert_z', True)
 
@@ -38,7 +38,7 @@ class PoseImuOdometryNode(Node):
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
         # Suscriptores a todas las variantes de tópicos de IMU y Pose
-        self.create_subscription(PoseStamped, self.pose_topic, self.pose_callback, 10)
+        self.create_subscription(PoseWithCovarianceStamped, self.pose_topic, self.pose_callback, 10)
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, 10)
         self.create_subscription(Imu, '/imu/data', self.imu_callback, 10)
         self.create_subscription(Imu, '/imu/data_raw', self.imu_raw_callback, 10)
@@ -68,14 +68,14 @@ class PoseImuOdometryNode(Node):
             f"  TF: {self.frame_id} -> {self.child_frame_id}"
         )
 
-    def pose_callback(self, msg: PoseStamped):
+    def pose_callback(self, msg: PoseWithCovarianceStamped):
         self.pose_count += 1
         now = self.get_clock().now().nanoseconds / 1e9
         if self.latest_pose is not None and self.last_pose_time is not None:
             dt = now - self.last_pose_time
             if dt > 0.001:
-                dx = msg.pose.position.x - self.latest_pose.pose.position.x
-                dy = msg.pose.position.y - self.latest_pose.pose.position.y
+                dx = msg.pose.pose.position.x - self.latest_pose.pose.pose.position.x
+                dy = msg.pose.pose.position.y - self.latest_pose.pose.pose.position.y
                 self.vx = dx / dt
                 self.vy = dy / dt
 
@@ -129,8 +129,8 @@ class PoseImuOdometryNode(Node):
 
         # Posición desde /usv5/pose (X, Y, Z=0)
         if self.latest_pose is not None:
-            odom_msg.pose.pose.position.x = self.latest_pose.pose.position.x
-            odom_msg.pose.pose.position.y = self.latest_pose.pose.position.y
+            odom_msg.pose.pose.position.x = self.latest_pose.pose.pose.position.x
+            odom_msg.pose.pose.position.y = self.latest_pose.pose.pose.position.y
             odom_msg.pose.pose.position.z = 0.0
         else:
             odom_msg.pose.pose.position.x = 0.0
@@ -143,11 +143,11 @@ class PoseImuOdometryNode(Node):
 
         if self.latest_imu is not None and not (self.latest_imu.orientation.w == 0.0 and self.latest_imu.orientation.x == 0.0):
             ori = self.latest_imu.orientation
-            # Rotación de 180° en X/Y para voltear el eje Z hacia arriba (Z Up)
-            odom_msg.pose.pose.orientation.w = -ori.x
-            odom_msg.pose.pose.orientation.x = ori.w
-            odom_msg.pose.pose.orientation.y = ori.z
-            odom_msg.pose.pose.orientation.z = -ori.y
+            # Pasar orientación de la IMU tal cual (sin forzar Z hacia arriba)
+            odom_msg.pose.pose.orientation.w = ori.w
+            odom_msg.pose.pose.orientation.x = ori.x
+            odom_msg.pose.pose.orientation.y = ori.y
+            odom_msg.pose.pose.orientation.z = ori.z
 
             o = odom_msg.pose.pose.orientation
             siny_cosp = 2.0 * (o.w * o.z + o.x * o.y)

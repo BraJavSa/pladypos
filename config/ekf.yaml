@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     frequency: 30.0
-    two_d_mode: true
+    two_d_mode: false
     publish_tf: true
 
     odom_frame:      odom
@@ -11,7 +11,7 @@
     # ── Fuente primaria: Odometría AprilTag ────────────────────────────────────
     odom0: /usv5/odom
     odom0_config: [true,  true,  false,   # X, Y (posición absoluta)
-                   false, false, true,    # Yaw (orientación absoluta)
+                   true,  true,  true,    # Roll, Pitch, Yaw (orientación absoluta 3D)
                    false, false, false,
                    false, false, false,
                    false, false, false]

@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
 apriltag_pose.py
-Nodo ROS 2 headless: detecta AprilTag 36h11 ID=285 desde el stream MJPEG
-y publica odometría RAW (sin filtrar) con covarianzas calibradas en /usv5/odom
-+ TF odom→usv5.  El filtrado lo hace robot_localization (EKF).
-
-Topics publicados:
-  /usv5/odom  (nav_msgs/Odometry)   — medición AprilTag con covarianzas
-  TF: odom → usv5                   — propagado del odom anterior
+Nodo ROS 2 headless para detección de AprilTag 36h11 ID=285 desde stream MJPEG.
+Calcula la pose 6D respecto al marco de la cámara (frame top/padre) usando solvePnP
+y publica Odometría (nav_msgs/Odometry) en /usv5/odom a 20 Hz ininterrumpidos.
+Publica la transformada TF directa (camera -> usv5), siendo la cámara el marco raíz (top frame).
 """
 
+import json
 import math
 import threading
 import time
 import urllib.request
-import json
 
 import cv2
 import numpy as np
@@ -22,64 +19,55 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import TransformStamped
+from tf2_ros import TransformBroadcaster
 
-# ─── Parámetros ────────────────────────────────────────────────────────────────
-STREAM_URL  = "http://10.250.253.1:8083/stream?topic=/camera_0352/camera_0352/image_raw"
-CALIB_URL   = "http://10.250.253.1:8083/calibration?camera=0352"
-TAG_ID      = 285
-TAG_SIDE_M  = 0.25
-ARUCO_DICT  = cv2.aruco.DICT_APRILTAG_36h11
-ODOM_TOPIC  = "/usv5/odom"
-FRAME_ID    = "odom"
-CHILD_FRAME = "usv5"
+# ─── Parámetros por defecto ───────────────────────────────────────────────────
+DEFAULT_STREAM_URL   = "http://10.250.253.1:8083/stream?topic=/camera_0352/camera_0352/image_raw"
+DEFAULT_CALIB_URL    = "http://10.250.253.1:8083/calibration?camera=0352"
+DEFAULT_TAG_ID       = 285
+DEFAULT_TAG_SIZE     = 0.25
+DEFAULT_ODOM_TOPIC   = "/usv5/odom"
+DEFAULT_CAMERA_FRAME = "camera"
+DEFAULT_USV_FRAME    = "usv5"
+DEFAULT_RATE_HZ      = 20.0
 
 DEFAULT_FX = 1109.2076
 DEFAULT_FY = 1114.4800
 DEFAULT_CX = 1019.4268
 DEFAULT_CY = 1033.4869
 
-# ─── Covarianzas de medición ───────────────────────────────────────────────────
-K_XY  = 0.03   # 3 cm por metro de distancia (medición confiable y rápida)
-K_YAW = 0.03   # ~1.7° por metro de distancia
-COV_Z = 1e6
-COV_R = 1e6
-COV_P = 1e6
-COV_VEL = 1e6  # twist no medido → ignorado por EKF
 
-# Filtro EMA ligero en el nodo para eliminar ruido de píxel con cero lag acumulado
-EMA_ALPHA = 0.4
-
-# ─── Calibración ───────────────────────────────────────────────────────────────
-
-def fetch_calibration():
+def fetch_calibration(calib_url: str):
+    """Obtiene la matriz de calibración K desde la URL o usa valores por defecto."""
     try:
-        with urllib.request.urlopen(CALIB_URL, timeout=3) as r:
+        with urllib.request.urlopen(calib_url, timeout=3) as r:
             data = json.load(r)
-        m  = data["camera_matrix"]["data"]
+        m = data["camera_matrix"]["data"]
         fx, cx = float(m[0]), float(m[2])
         fy, cy = float(m[4]), float(m[5])
     except Exception:
         fx, fy, cx, cy = DEFAULT_FX, DEFAULT_FY, DEFAULT_CX, DEFAULT_CY
 
-    K    = np.array([[fx, 0, cx],
-                     [0, fy, cy],
-                     [0,  0,  1]], dtype=np.float64)
+    K = np.array([[fx, 0, cx],
+                  [0, fy, cy],
+                  [0,  0,  1]], dtype=np.float64)
     dist = np.zeros((5, 1), dtype=np.float64)
     return K, dist
 
 
-# ─── MJPEG reader ──────────────────────────────────────────────────────────────
-
 class MJPEGReader:
+    """Lector asíncrono del stream MJPEG HTTP."""
     def __init__(self, url: str):
-        self._url       = url
-        self._frame     = None
-        self._lock      = threading.Lock()
-        self._stop      = threading.Event()
+        self._url = url
+        self._frame = None
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
         self._new_frame = threading.Event()
-        self._t         = threading.Thread(target=self._run, daemon=True)
+        self._t = threading.Thread(target=self._run, daemon=True)
 
-    def start(self):  self._t.start()
+    def start(self):
+        self._t.start()
 
     def stop(self):
         self._stop.set()
@@ -103,7 +91,7 @@ class MJPEGReader:
                     if not chunk:
                         break
                     buf += chunk
-                    a  = buf.find(b"\xff\xd8")
+                    a = buf.find(b"\xff\xd8")
                     b_ = buf.find(b"\xff\xd9")
                     if a != -1 and b_ != -1 and b_ > a:
                         jpg = buf[a:b_+2]
@@ -119,12 +107,11 @@ class MJPEGReader:
                     time.sleep(1)
 
 
-# ─── Detector ArUco ────────────────────────────────────────────────────────────
-
 def build_detector():
-    aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)
+    """Construye el detector ArUco/AprilTag compatible con distintas versiones de OpenCV."""
+    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
     try:
-        params   = cv2.aruco.DetectorParameters()
+        params = cv2.aruco.DetectorParameters()
         detector = cv2.aruco.ArucoDetector(aruco_dict, params)
         return detector, None
     except AttributeError:
@@ -132,7 +119,8 @@ def build_detector():
         return aruco_dict, params
 
 
-def detect_tag(detector_info, gray):
+def detect_tag(detector_info, gray, target_id: int):
+    """Detecta el AprilTag con ID especificado y retorna sus esquinas en la imagen."""
     det, params = detector_info
     if params is None:
         corners, ids, _ = det.detectMarkers(gray)
@@ -141,200 +129,277 @@ def detect_tag(detector_info, gray):
     if ids is None:
         return None
     for i, id_val in enumerate(ids.flatten()):
-        if int(id_val) == TAG_ID:
+        if int(id_val) == target_id:
             return corners[i][0]
     return None
 
 
-# ─── Estimación de pose 6-DOF ──────────────────────────────────────────────────
+def rotation_matrix_to_quaternion(R: np.ndarray):
+    """Convierte matriz de rotación 3x3 R a cuaternión normalizado (w, x, y, z)."""
+    tr = np.trace(R)
+    if tr > 0:
+        S = math.sqrt(tr + 1.0) * 2
+        qw = 0.25 * S
+        qx = (R[2, 1] - R[1, 2]) / S
+        qy = (R[0, 2] - R[2, 0]) / S
+        qz = (R[1, 0] - R[0, 1]) / S
+    elif (R[0, 0] > R[1, 1]) and (R[0, 0] > R[2, 2]):
+        S = math.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2
+        qw = (R[2, 1] - R[1, 2]) / S
+        qx = 0.25 * S
+        qy = (R[0, 1] + R[1, 0]) / S
+        qz = (R[0, 2] + R[2, 0]) / S
+    elif R[1, 1] > R[2, 2]:
+        S = math.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2
+        qw = (R[0, 2] - R[2, 0]) / S
+        qx = (R[0, 1] + R[1, 0]) / S
+        qy = 0.25 * S
+        qz = (R[1, 2] + R[2, 1]) / S
+    else:
+        S = math.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
+        qw = (R[1, 0] - R[0, 1]) / S
+        qx = (R[0, 2] + R[2, 0]) / S
+        qy = (R[1, 2] + R[2, 1]) / S
+        qz = 0.25 * S
 
-HALF    = TAG_SIDE_M / 2.0
-OBJ_PTS = np.array([
-    [-HALF,  HALF, 0],
-    [ HALF,  HALF, 0],
-    [ HALF, -HALF, 0],
-    [-HALF, -HALF, 0],
-], dtype=np.float64)
-
-# ─── Convención FLU / ENU ──────────────────────────────────────────────────────
-# Cámara en el TECHO mirando ABAJO.  Tag en la superficie del agua mirando ARRIBA.
-# solvePnP tvec está en frame de cámara: X=derecha, Y=abajo, Z=profundidad.
-#   x_world =  tvec[0]            (eje fijo horizontal)
-#   y_world = -tvec[1]            (cam Y apunta abajo → negar para Z-up)
-# Yaw FLU: CCW positivo visto desde arriba.
-#   En coords de cámara (Y=abajo), CW desde arriba da atan2 creciente,
-#   por lo tanto yaw_flu = -atan2(R[1,0], R[0,0]).
-#   Offset +π/2 porque el frente del robot coincide con el eje Y del tag.
-
-_YAW_OFFSET = math.pi / 2.0 + math.pi   # frente del robot + 90° + 180° (rotación 180° respecto a Y)
+    norm = math.sqrt(qw * qw + qx * qx + qy * qy + qz * qz)
+    if norm < 1e-12:
+        return 1.0, 0.0, 0.0, 0.0
+    return qw / norm, qx / norm, qy / norm, qz / norm
 
 
-def estimate_pose(corners_px, K, dist):
+def estimate_pose(corners_px: np.ndarray, tag_size: float, K: np.ndarray, dist: np.ndarray):
     """
-    Retorna (x, y, yaw, depth) en convención FLU/ENU, o
-    (None, None, None, None) si falla.
-
-    Posición (en frame fijo de la cámara, plano horizontal):
-      x =  tvec[0]
-      y = -tvec[1]   (cámara Y apunta abajo, mundo Y apunta "arriba-en-imagen")
-
-    Yaw (FLU, CCW+ visto desde arriba, con 180° adicionales):
-      yaw = -atan2(R[1,0], R[0,0]) + π/2 + π
+    Calcula la posición 3D (x, y, z) y la orientación en cuaternión (qw, qx, qy, qz)
+    del AprilTag con respecto al sistema de coordenadas de la cámara.
     """
+    half = tag_size / 2.0
+    obj_pts = np.array([
+        [-half,  half, 0.0],
+        [ half,  half, 0.0],
+        [ half, -half, 0.0],
+        [-half, -half, 0.0]
+    ], dtype=np.float64)
+
     try:
         ok, rvec, tvec = cv2.solvePnP(
-            OBJ_PTS, corners_px.astype(np.float64),
+            obj_pts, corners_px.astype(np.float64),
             K, dist, flags=cv2.SOLVEPNP_IPPE_SQUARE)
         if not ok:
-            return None, None, None, None
+            return None
 
-        x     =  float(tvec.flat[0])
-        y     = -float(tvec.flat[1])          # cam Y abajo → negar
-        depth = max(float(tvec.flat[2]), 0.1)
+        x = float(tvec.flat[0])
+        y = float(tvec.flat[1])
+        z = float(tvec.flat[2])
 
-        R, _  = cv2.Rodrigues(rvec)
-        raw_yaw = -math.atan2(float(R[1, 0]), float(R[0, 0])) + _YAW_OFFSET
-        yaw = (raw_yaw + math.pi) % (2 * math.pi) - math.pi
+        R, _ = cv2.Rodrigues(rvec)
+        qw, qx, qy, qz = rotation_matrix_to_quaternion(R)
 
-        return x, y, yaw, depth
+        return x, y, z, qw, qx, qy, qz
     except Exception:
-        return None, None, None, None
+        return None
 
 
-# ─── Helpers ───────────────────────────────────────────────────────────────────
-
-def yaw_to_quat(yaw: float):
-    """Quaternion de rotación pura en Z → (w, x, y, z)."""
-    h = yaw * 0.5
-    return math.cos(h), 0.0, 0.0, math.sin(h)
-
-
-def make_pose_cov(depth: float):
-    """Covarianza 6×6 diagonal aplanada escalada con la distancia al tag."""
-    cov_xy  = (K_XY  * depth) ** 2
-    cov_yaw = (K_YAW * depth) ** 2
-    c = [0.0] * 36
-    for i, v in enumerate([cov_xy, cov_xy, COV_Z, COV_R, COV_P, cov_yaw]):
-        c[i * 7] = v
-    return c
+def make_pose_covariance(distance: float):
+    """Matriz de covarianza de pose 6x6 escalada con la distancia al tag."""
+    var_pos = max(0.001, 0.01 * (distance ** 2))
+    var_rot = max(0.005, 0.03 * (distance ** 2))
+    cov = [0.0] * 36
+    cov[0]  = var_pos  # x
+    cov[7]  = var_pos  # y
+    cov[14] = var_pos  # z
+    cov[21] = var_rot  # roll
+    cov[28] = var_rot  # pitch
+    cov[35] = var_rot  # yaw
+    return cov
 
 
-TWIST_COV = [COV_VEL if i % 7 == 0 else 0.0 for i in range(36)]
+def make_twist_covariance():
+    """Matriz de covarianza de velocidad 6x6."""
+    cov = [0.0] * 36
+    cov[0]  = 0.05  # vx
+    cov[7]  = 0.05  # vy
+    cov[14] = 0.05  # vz
+    cov[21] = 0.1   # wx
+    cov[28] = 0.1   # wy
+    cov[35] = 0.1   # wz
+    return cov
 
-
-# ─── Nodo ROS 2 ────────────────────────────────────────────────────────────────
 
 class AprilTagPoseNode(Node):
-
     def __init__(self):
         super().__init__("apriltag_pose")
-        self._pub_odom = self.create_publisher(Odometry, ODOM_TOPIC, 10)
 
-        self._K, self._dist = fetch_calibration()
-        self._detector      = build_detector()
-        self._reader        = MJPEGReader(STREAM_URL)
-        self._stop          = threading.Event()
-        self._thread        = threading.Thread(target=self._loop, daemon=True)
+        # Declarar parámetros ROS 2
+        self.declare_parameter("stream_url", DEFAULT_STREAM_URL)
+        self.declare_parameter("calib_url", DEFAULT_CALIB_URL)
+        self.declare_parameter("tag_id", DEFAULT_TAG_ID)
+        self.declare_parameter("tag_size", DEFAULT_TAG_SIZE)
+        self.declare_parameter("odom_topic", DEFAULT_ODOM_TOPIC)
+        self.declare_parameter("camera_frame_id", DEFAULT_CAMERA_FRAME)
+        self.declare_parameter("usv_frame_id", DEFAULT_USV_FRAME)
+        self.declare_parameter("publish_tf", True)
+        self.declare_parameter("publish_rate", DEFAULT_RATE_HZ)
 
-        # Estado filtrado EMA + Mediana para eliminar ruido de alta frecuencia
-        self._fx:   float | None = None
-        self._fy:   float | None = None
-        self._fyaw: float | None = None
-        self._buf_x: list[float] = []
-        self._buf_y: list[float] = []
+        self.stream_url = self.get_parameter("stream_url").value
+        self.calib_url = self.get_parameter("calib_url").value
+        self.tag_id = int(self.get_parameter("tag_id").value)
+        self.tag_size = float(self.get_parameter("tag_size").value)
+        self.odom_topic = self.get_parameter("odom_topic").value
+        self.camera_frame_id = self.get_parameter("camera_frame_id").value
+        self.usv_frame_id = self.get_parameter("usv_frame_id").value
+        self.publish_tf = bool(self.get_parameter("publish_tf").value)
+        self.publish_rate = float(self.get_parameter("publish_rate").value)
+
+        self._pub_odom = self.create_publisher(Odometry, self.odom_topic, 10)
+        self._tf_br = TransformBroadcaster(self)
+
+        self._K, self._dist = fetch_calibration(self.calib_url)
+        self._detector = build_detector()
+        self._reader = MJPEGReader(self.stream_url)
+
+        self._stop = threading.Event()
+        self._detection_thread = threading.Thread(target=self._detection_loop, daemon=True)
+
+        # Estado de última pose detectada y velocidad
+        self._lock = threading.Lock()
+        self._latest_data = None  # (x, y, z, qw, qx, qy, qz, timestamp, vx, vy, vz)
+        self._prev_pose = None    # (x, y, z, timestamp)
+
+        # Timer a frecuencia fija (20 Hz por defecto)
+        timer_period = 1.0 / self.publish_rate
+        self.create_timer(timer_period, self._timer_callback)
+
+        self.get_logger().info(
+            f"Nodo apriltag_pose (Odometría + TF a {self.publish_rate} Hz):\n"
+            f"  Topic Odometría: {self.odom_topic}\n"
+            f"  TF: {self.camera_frame_id} (top frame) -> {self.usv_frame_id}\n"
+            f"  Tag ID: {self.tag_id} ({self.tag_size} m)"
+        )
 
     def start(self):
         self._reader.start()
-        self._thread.start()
+        self._detection_thread.start()
 
     def stop(self):
         self._stop.set()
         self._reader.stop()
-        self._thread.join(timeout=3)
+        self._detection_thread.join(timeout=3)
 
-    def _loop(self):
+    def _detection_loop(self):
+        """Hilo dedicado a procesar los fotogramas del MJPEG stream."""
         while not self._stop.is_set():
             gray = self._reader.wait_new_frame(timeout=0.5)
             if gray is None:
                 continue
-            corners = detect_tag(self._detector, gray)
+
+            corners = detect_tag(self._detector, gray, self.tag_id)
             if corners is None:
-                self._fx = self._fy = self._fyaw = None
-                self._buf_x = []
-                self._buf_y = []
-                continue
-            x, y, yaw, depth = estimate_pose(corners, self._K, self._dist)
-            if x is None:
                 continue
 
-            # ── Filtro de Fuerza Máxima en 5 cm ───────────────────────────────
-            # Mantiene el umbral estrictamente en 5 cm (0.05 m).
-            # Dentro de los 5 cm, aplica fuerza máxima de filtrado (alpha = 0.005).
-            if self._fx is None:
-                self._fx, self._fy, self._fyaw = x, y, yaw
-                self._buf_x = [x]
-                self._buf_y = [y]
-            else:
-                # 1. Filtro de Mediana (3 muestras) para decapitar picos de ruido
-                self._buf_x.append(x)
-                self._buf_y.append(y)
-                if len(self._buf_x) > 3:
-                    self._buf_x.pop(0)
-                    self._buf_y.pop(0)
-                
-                x_med = float(np.median(self._buf_x))
-                y_med = float(np.median(self._buf_y))
+            res = estimate_pose(corners, self.tag_size, self._K, self._dist)
+            if res is None:
+                continue
 
-                # 2. Distancia respecto al umbral estricto de 5 cm
-                dist_delta = math.hypot(x_med - self._fx, y_med - self._fy)
+            x, y, z, qw, qx, qy, qz = res
+            now_sec = time.time()
 
-                if dist_delta < 0.05:
-                    # Fuerza máxima de filtrado dentro de los 5 cm (alpha = 0.005)
-                    a = 0.005
-                else:
-                    # Fuera de los 5 cm: transición rápida a movimiento real
-                    ratio = (dist_delta - 0.05) / 0.10
-                    a = min(0.85, 0.05 + ratio * 0.80)
+            vx, vy, vz = 0.0, 0.0, 0.0
+            if self._prev_pose is not None:
+                px, py, pz, pt = self._prev_pose
+                dt = now_sec - pt
+                if dt > 0.001:
+                    vx = (x - px) / dt
+                    vy = (y - py) / dt
+                    vz = (z - pz) / dt
 
-                self._fx = a * x_med + (1.0 - a) * self._fx
-                self._fy = a * y_med + (1.0 - a) * self._fy
+            self._prev_pose = (x, y, z, now_sec)
 
-                # 3. Filtrado suave en orientación (yaw)
-                dyaw = (yaw - self._fyaw + math.pi) % (2 * math.pi) - math.pi
-                # a_yaw = 0.08 elimina el temblor angular sin bloquear ni dar tirones
-                a_yaw = 0.08 if abs(dyaw) < 0.05 else 0.60
-                self._fyaw = self._fyaw + a_yaw * dyaw
+            with self._lock:
+                self._latest_data = (x, y, z, qw, qx, qy, qz, now_sec, vx, vy, vz)
 
-            if rclpy.ok():
-                self._publish(self._fx, self._fy, self._fyaw, depth)
+    def _publish_tf(self, stamp, x: float, y: float, z: float, qw: float, qx: float, qy: float, qz: float):
+        """Publica la transformada TF directa de la Cámara al USV (camera -> usv5)."""
+        if not self.publish_tf:
+            return
 
-    def _publish(self, x: float, y: float, yaw: float, depth: float):
+        t_usv = TransformStamped()
+        t_usv.header.stamp = stamp
+        t_usv.header.frame_id = self.camera_frame_id
+        t_usv.child_frame_id = self.usv_frame_id
+        t_usv.transform.translation.x = x
+        t_usv.transform.translation.y = y
+        t_usv.transform.translation.z = z
+        t_usv.transform.rotation.w = qw
+        t_usv.transform.rotation.x = qx
+        t_usv.transform.rotation.y = qy
+        t_usv.transform.rotation.z = qz
+
+        self._tf_br.sendTransform(t_usv)
+
+    def _timer_callback(self):
+        """Callback del temporizador ROS 2 ejecutado a 20 Hz fijo sin interrupción."""
+        with self._lock:
+            data = self._latest_data
+
         stamp = self.get_clock().now().to_msg()
-        qw, qx, qy, qz = yaw_to_quat(yaw)
+        odom_msg = Odometry()
+        odom_msg.header.stamp = stamp
+        odom_msg.header.frame_id = self.camera_frame_id
+        odom_msg.child_frame_id = self.usv_frame_id
 
-        # ── Odometry ──────────────────────────────────────────────────────────
-        odom = Odometry()
-        odom.header.stamp    = stamp
-        odom.header.frame_id = FRAME_ID
-        odom.child_frame_id  = CHILD_FRAME
+        # Si no hay detección o los datos son mayores a 1.0s, publicar odometría y TF vacías (cero)
+        if data is None or (time.time() - data[7]) > 1.0:
+            odom_msg.pose.pose.position.x = 0.0
+            odom_msg.pose.pose.position.y = 0.0
+            odom_msg.pose.pose.position.z = 0.0
 
-        odom.pose.pose.position.x    = x
-        odom.pose.pose.position.y    = y
-        odom.pose.pose.position.z    = 0.0
-        odom.pose.pose.orientation.w = qw
-        odom.pose.pose.orientation.x = qx
-        odom.pose.pose.orientation.y = qy
-        odom.pose.pose.orientation.z = qz
+            odom_msg.pose.pose.orientation.w = 1.0
+            odom_msg.pose.pose.orientation.x = 0.0
+            odom_msg.pose.pose.orientation.y = 0.0
+            odom_msg.pose.pose.orientation.z = 0.0
 
-        # Covarianza escalada con la distancia real al tag
-        odom.pose.covariance  = make_pose_cov(depth)
-        odom.twist.covariance = TWIST_COV
+            odom_msg.pose.covariance = [0.0] * 36
 
-        self._pub_odom.publish(odom)
-        # TF publicado por robot_localization (odom → usv5, filtrado)
+            odom_msg.twist.twist.linear.x = 0.0
+            odom_msg.twist.twist.linear.y = 0.0
+            odom_msg.twist.twist.linear.z = 0.0
+            odom_msg.twist.twist.angular.x = 0.0
+            odom_msg.twist.twist.angular.y = 0.0
+            odom_msg.twist.twist.angular.z = 0.0
+            odom_msg.twist.covariance = [0.0] * 36
 
+            self._pub_odom.publish(odom_msg)
 
-# ─── Entrypoint ────────────────────────────────────────────────────────────────
+            # Publicar TF vacía (camera -> usv5 en 0,0,0)
+            self._publish_tf(stamp, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+            return
+
+        # Si hay detección activa y reciente:
+        x, y, z, qw, qx, qy, qz, ts, vx, vy, vz = data
+        dist = math.sqrt(x * x + y * y + z * z)
+
+        odom_msg.pose.pose.position.x = x
+        odom_msg.pose.pose.position.y = y
+        odom_msg.pose.pose.position.z = z
+
+        odom_msg.pose.pose.orientation.w = qw
+        odom_msg.pose.pose.orientation.x = qx
+        odom_msg.pose.pose.orientation.y = qy
+        odom_msg.pose.pose.orientation.z = qz
+
+        odom_msg.pose.covariance = make_pose_covariance(dist)
+
+        odom_msg.twist.twist.linear.x = vx
+        odom_msg.twist.twist.linear.y = vy
+        odom_msg.twist.twist.linear.z = vz
+        odom_msg.twist.covariance = make_twist_covariance()
+
+        self._pub_odom.publish(odom_msg)
+
+        # Publicar TF de la pose estimada (camera -> usv5)
+        self._publish_tf(stamp, x, y, z, qw, qx, qy, qz)
+
 
 def main(args=None):
     rclpy.init(args=args)
