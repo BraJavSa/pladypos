@@ -6,6 +6,7 @@ from launch.actions import DeclareLaunchArgument, RegisterEventHandler
 from launch.event_handlers import OnProcessStart
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     usv_id = 5
@@ -53,9 +54,12 @@ def generate_launch_description():
             #   X_robot (adelante)  = +Y_sensor
             #   Y_robot (izquierda) = +X_sensor
             #   Z_robot (arriba)    = -Z_sensor
-            'map_x_from': 'y',
-            'map_y_from': 'x',
-            'map_z_from': 'z',
+            # NOTA: se fuerza value_type=str porque YAML interpreta 'y'/'n'/
+            # 'yes'/'no' como booleanos si no se especifica el tipo explicitamente,
+            # lo que rompe declare_parameter (esperaba STRING, llegaba BOOL).
+            'map_x_from': ParameterValue('y', value_type=str),
+            'map_y_from': ParameterValue('x', value_type=str),
+            'map_z_from': ParameterValue('z', value_type=str),
             'sign_x': 1.0,
             'sign_y': 1.0,
             'sign_z': -1.0,
