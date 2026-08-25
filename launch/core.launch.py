@@ -47,7 +47,15 @@ def generate_launch_description():
         parameters=[{
             'port': LaunchConfiguration('port_imu'),
             'baud': LaunchConfiguration('baud'),
-            'use_ned': False
+            'invert_acc_x': False,
+            'invert_acc_y': False,
+            'invert_acc_z': False,
+            'invert_gyro_x': False,
+            'invert_gyro_y': False,
+            'invert_gyro_z': False,
+            'invert_mag_x': False,
+            'invert_mag_y': False,
+            'invert_mag_z': False
         }]
     )
 

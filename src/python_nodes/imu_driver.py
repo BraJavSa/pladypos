@@ -15,11 +15,20 @@ class IMUDriver(Node):
 
         self.declare_parameter('port', 'auto')
         self.declare_parameter('baud', 115200)
-        self.declare_parameter('use_ned', True)
+        self.declare_parameter('invert_acc_x', False)
+        self.declare_parameter('invert_acc_y', False)
+        self.declare_parameter('invert_acc_z', False)
+        
+        self.declare_parameter('invert_gyro_x', False)
+        self.declare_parameter('invert_gyro_y', False)
+        self.declare_parameter('invert_gyro_z', False)
+        
+        self.declare_parameter('invert_mag_x', False)
+        self.declare_parameter('invert_mag_y', False)
+        self.declare_parameter('invert_mag_z', False)
 
         self.port = self.get_parameter('port').value
         self.baud = self.get_parameter('baud').value
-        self.use_ned = self.get_parameter('use_ned').value
 
         self.imu_pub = self.create_publisher(Imu, 'imu/data_raw', 10)
         self.mag_pub = self.create_publisher(MagneticField, 'imu/mag', 10)
@@ -147,25 +156,26 @@ class IMUDriver(Node):
                             0.0, 0.0, 0.01
                         ]
 
-                        if self.use_ned:
-                            # Publicar raw NED (X Frente, Y Derecha, Z Abajo)
-                            imu_msg.linear_acceleration.x = acc[0] * 9.8065
-                            imu_msg.linear_acceleration.y = acc[1] * 9.8065
-                            imu_msg.linear_acceleration.z = acc[2] * 9.8065
+                        # Parámetros de inversión leídos on-the-fly o en inicialización
+                        inv_ax = -1.0 if self.get_parameter('invert_acc_x').value else 1.0
+                        inv_ay = -1.0 if self.get_parameter('invert_acc_y').value else 1.0
+                        inv_az = -1.0 if self.get_parameter('invert_acc_z').value else 1.0
+                        
+                        inv_gx = -1.0 if self.get_parameter('invert_gyro_x').value else 1.0
+                        inv_gy = -1.0 if self.get_parameter('invert_gyro_y').value else 1.0
+                        inv_gz = -1.0 if self.get_parameter('invert_gyro_z').value else 1.0
 
-                            imu_msg.angular_velocity.x = gyro[0] * math.pi / 180.0
-                            imu_msg.angular_velocity.y = gyro[1] * math.pi / 180.0
-                            imu_msg.angular_velocity.z = gyro[2] * math.pi / 180.0
-                        else:
-                            # Transformar de NED a FLU (Estándar ROS: X Frente, Y Izquierda, Z Arriba)
-                            # Esto invierte Y y Z para que el filtro complementario lo procese correctamente como ENU/FLU
-                            imu_msg.linear_acceleration.x = acc[0] * 9.8065
-                            imu_msg.linear_acceleration.y = -acc[1] * 9.8065
-                            imu_msg.linear_acceleration.z = -acc[2] * 9.8065
+                        inv_mx = -1.0 if self.get_parameter('invert_mag_x').value else 1.0
+                        inv_my = -1.0 if self.get_parameter('invert_mag_y').value else 1.0
+                        inv_mz = -1.0 if self.get_parameter('invert_mag_z').value else 1.0
 
-                            imu_msg.angular_velocity.x = gyro[0] * math.pi / 180.0
-                            imu_msg.angular_velocity.y = -gyro[1] * math.pi / 180.0
-                            imu_msg.angular_velocity.z = -gyro[2] * math.pi / 180.0
+                        imu_msg.linear_acceleration.x = acc[0] * 9.8065 * inv_ax
+                        imu_msg.linear_acceleration.y = acc[1] * 9.8065 * inv_ay
+                        imu_msg.linear_acceleration.z = acc[2] * 9.8065 * inv_az
+
+                        imu_msg.angular_velocity.x = gyro[0] * (math.pi / 180.0) * inv_gx
+                        imu_msg.angular_velocity.y = gyro[1] * (math.pi / 180.0) * inv_gy
+                        imu_msg.angular_velocity.z = gyro[2] * (math.pi / 180.0) * inv_gz
 
                         self.imu_pub.publish(imu_msg)
 
@@ -173,14 +183,9 @@ class IMUDriver(Node):
                         mag_msg.header.stamp = imu_msg.header.stamp
                         mag_msg.header.frame_id = 'imu_link'
                         
-                        if self.use_ned:
-                            mag_msg.magnetic_field.x = mag[0] * 1e-7
-                            mag_msg.magnetic_field.y = mag[1] * 1e-7
-                            mag_msg.magnetic_field.z = mag[2] * 1e-7
-                        else:
-                            mag_msg.magnetic_field.x = mag[0] * 1e-7
-                            mag_msg.magnetic_field.y = -mag[1] * 1e-7
-                            mag_msg.magnetic_field.z = -mag[2] * 1e-7
+                        mag_msg.magnetic_field.x = mag[0] * 1e-7 * inv_mx
+                        mag_msg.magnetic_field.y = mag[1] * 1e-7 * inv_my
+                        mag_msg.magnetic_field.z = mag[2] * 1e-7 * inv_mz
 
                         self.mag_pub.publish(mag_msg)
 
