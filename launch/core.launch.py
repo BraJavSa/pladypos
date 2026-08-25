@@ -46,9 +46,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'port': LaunchConfiguration('port_imu'),
-            'baud': LaunchConfiguration('baud'),
-            'use_ned': False,
-            'use_flu': True
+            'baud': LaunchConfiguration('baud')
         }]
     )
 
@@ -78,16 +76,32 @@ def generate_launch_description():
         name='complementary_filter_node',
         namespace=ns,
         output='screen',
+        parameters=[{
+            'use_mag': True,
+            'publish_tf': False
+        }],
         remappings=[
             ('imu/data_raw', 'imu/data_raw'),
             ('imu/mag', 'imu/mag')
         ]
     )
 
+    flu_imu_publisher_node = Node(
+        package='pladypos',
+        executable='flu_imu_publisher.py',
+        name='flu_imu_publisher_node',
+        namespace=ns,
+        output='screen',
+        parameters=[{
+            'input_topic': 'imu/data',
+            'output_topic': 'flu_imu/data'
+        }]
+    )
+
     filter_start_event = RegisterEventHandler(
         OnProcessStart(
             target_action=imu_driver_node,
-            on_start=[complementary_filter_node]
+            on_start=[complementary_filter_node, flu_imu_publisher_node]
         )
     )
 

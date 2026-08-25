@@ -15,6 +15,7 @@ install(PROGRAMS
   src/python_nodes/motor_mapper.py
   src/python_nodes/pose_imu_odometry.py
   src/python_nodes/apriltag_pose.py
+  src/python_nodes/flu_imu_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
