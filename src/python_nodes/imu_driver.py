@@ -18,11 +18,11 @@ class IMUDriver(Node):
         self.declare_parameter('invert_acc_x', False)
         self.declare_parameter('invert_acc_y', False)
         self.declare_parameter('invert_acc_z', False)
-        
+
         self.declare_parameter('invert_gyro_x', False)
         self.declare_parameter('invert_gyro_y', False)
         self.declare_parameter('invert_gyro_z', False)
-        
+
         self.declare_parameter('invert_mag_x', False)
         self.declare_parameter('invert_mag_y', False)
         self.declare_parameter('invert_mag_z', False)
@@ -90,7 +90,7 @@ class IMUDriver(Node):
             if 'micro' in name or 'arduino' in name:
                 arduino_port = port
                 break
-                
+
         for port, name in by_id_map.items():
             if port != arduino_port:
                 if 'razor' in name or 'ftdi' in name or 'usb-uart' in name or 'usb' in name:
@@ -99,7 +99,7 @@ class IMUDriver(Node):
         # 2. Fallback to candidate scan
         candidates = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
         candidates = sorted(list(set([os.path.realpath(c) for c in candidates])))
-        
+
         for port in candidates:
             if port == arduino_port:
                 continue
@@ -156,11 +156,11 @@ class IMUDriver(Node):
                             0.0, 0.0, 0.01
                         ]
 
-                        # Parámetros de inversión leídos on-the-fly o en inicialización
+                        # Parámetros de inversión leídos on-the-fly
                         inv_ax = -1.0 if self.get_parameter('invert_acc_x').value else 1.0
                         inv_ay = -1.0 if self.get_parameter('invert_acc_y').value else 1.0
                         inv_az = -1.0 if self.get_parameter('invert_acc_z').value else 1.0
-                        
+
                         inv_gx = -1.0 if self.get_parameter('invert_gyro_x').value else 1.0
                         inv_gy = -1.0 if self.get_parameter('invert_gyro_y').value else 1.0
                         inv_gz = -1.0 if self.get_parameter('invert_gyro_z').value else 1.0
@@ -182,7 +182,7 @@ class IMUDriver(Node):
                         mag_msg = MagneticField()
                         mag_msg.header.stamp = imu_msg.header.stamp
                         mag_msg.header.frame_id = 'imu_link'
-                        
+
                         mag_msg.magnetic_field.x = mag[0] * 1e-7 * inv_mx
                         mag_msg.magnetic_field.y = mag[1] * 1e-7 * inv_my
                         mag_msg.magnetic_field.z = mag[2] * 1e-7 * inv_mz
