@@ -17,11 +17,11 @@ class IMUDriver(Node):
         self.declare_parameter('baud', 115200)
 
         # Mapeo de ejes: para cada eje del ROBOT (x,y,z en FLU) indicamos
-        # de qué eje del SENSOR viene ('x','y','z') y con qué signo.
+        # de qué eje del SENSOR viene ('axis_x','axis_y','axis_z') y con qué signo.
         # Por defecto: sensor y robot coinciden (sin rotación de montaje).
-        self.declare_parameter('map_x_from', 'x')
-        self.declare_parameter('map_y_from', 'y')
-        self.declare_parameter('map_z_from', 'z')
+        self.declare_parameter('map_x_from', 'axis_x')
+        self.declare_parameter('map_y_from', 'axis_y')
+        self.declare_parameter('map_z_from', 'axis_z')
 
         self.declare_parameter('sign_x', 1.0)
         self.declare_parameter('sign_y', 1.0)
@@ -120,7 +120,7 @@ class IMUDriver(Node):
         segun los parametros map_*_from y sign_*, devolviendo
         [x_robot, y_robot, z_robot] en FLU.
         """
-        idx = {'x': 0, 'y': 1, 'z': 2}
+        idx = {'axis_x': 0, 'axis_y': 1, 'axis_z': 2, 'x': 0, 'y': 1, 'z': 2}
 
         map_x_from = self.get_parameter('map_x_from').value
         map_y_from = self.get_parameter('map_y_from').value

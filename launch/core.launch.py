@@ -54,12 +54,10 @@ def generate_launch_description():
             #   X_robot (adelante)  = +Y_sensor
             #   Y_robot (izquierda) = +X_sensor
             #   Z_robot (arriba)    = -Z_sensor
-            # NOTA: se fuerza value_type=str porque YAML interpreta 'y'/'n'/
-            # 'yes'/'no' como booleanos si no se especifica el tipo explicitamente,
-            # lo que rompe declare_parameter (esperaba STRING, llegaba BOOL).
-            'map_x_from': ParameterValue('y', value_type=str),
-            'map_y_from': ParameterValue('x', value_type=str),
-            'map_z_from': ParameterValue('z', value_type=str),
+            # YAML interpreta 'y' y 'n' como booleanos. Usaremos 'axis_x', 'axis_y', 'axis_z'
+            'map_x_from': 'axis_y',
+            'map_y_from': 'axis_x',
+            'map_z_from': 'axis_z',
             'sign_x': 1.0,
             'sign_y': 1.0,
             'sign_z': -1.0,
