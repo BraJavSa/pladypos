@@ -47,16 +47,18 @@ def generate_launch_description():
         parameters=[{
             'port': LaunchConfiguration('port_imu'),
             'baud': LaunchConfiguration('baud'),
-            # Conversión FRD (Arduino) -> FLU (REP-103): X se mantiene, Y y Z invierten signo
-            'invert_acc_x': False,
-            'invert_acc_y': True,
-            'invert_acc_z': True,
-            'invert_gyro_x': False,
-            'invert_gyro_y': True,
-            'invert_gyro_z': False,  # se cancela con el bug de signo del firmware en Z
-            'invert_mag_x': False,
-            'invert_mag_y': True,
-            'invert_mag_z': True
+            # Mapeo de ejes sensor -> robot (FLU), determinado a partir del TF:
+            # el IMU esta fisicamente montado con +Y_sensor apuntando a proa,
+            # +X_sensor apuntando a babor, y Z_sensor invertido respecto a arriba.
+            #   X_robot (adelante)  = +Y_sensor
+            #   Y_robot (izquierda) = +X_sensor
+            #   Z_robot (arriba)    = -Z_sensor
+            'map_x_from': 'y',
+            'map_y_from': 'x',
+            'map_z_from': 'z',
+            'sign_x': 1.0,
+            'sign_y': 1.0,
+            'sign_z': -1.0,
         }]
     )
 
