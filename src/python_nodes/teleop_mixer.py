@@ -5,6 +5,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Float32MultiArray
+from ament_index_python.packages import get_package_share_directory
 
 class TeleopMixer(Node):
     def __init__(self):
@@ -32,8 +33,13 @@ class TeleopMixer(Node):
             4: "Back Left (BL)"
         }
         
-        config_path = '/home/brayan/ros2_ws/src/pladypos/config/motor_mapping.yaml'
-        if os.path.exists(config_path):
+        try:
+            package_share_dir = get_package_share_directory('pladypos')
+            config_path = os.path.join(package_share_dir, 'config', 'motor_mapping.yaml')
+        except Exception:
+            config_path = None
+
+        if config_path and os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as f:
                     config_data = yaml.safe_load(f)

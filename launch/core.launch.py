@@ -16,14 +16,7 @@ def generate_launch_description():
                 config_data = yaml.safe_load(f)
                 usv_id = config_data.get('usv_id', 5)
     except Exception:
-        src_path = '/home/brayan/ros2_ws/src/pladypos/config/usv_config.yaml'
-        if os.path.exists(src_path):
-            try:
-                with open(src_path, 'r') as f:
-                    config_data = yaml.safe_load(f)
-                    usv_id = config_data.get('usv_id', 5)
-            except Exception:
-                pass
+        pass
 
     ns = f"usv{usv_id}"
 
@@ -32,7 +25,7 @@ def generate_launch_description():
         default_value='115200',
         description='Baud rate for the IMU and Arduino communication'
     )
-    
+
     port_imu_arg = DeclareLaunchArgument(
         'port_imu',
         default_value='auto',
