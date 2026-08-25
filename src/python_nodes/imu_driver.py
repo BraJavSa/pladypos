@@ -15,20 +15,11 @@ class IMUDriver(Node):
 
         self.declare_parameter('port', 'auto')
         self.declare_parameter('baud', 115200)
-
-        # Mapeo de ejes: para cada eje del ROBOT (x,y,z en FLU) indicamos
-        # de qué eje del SENSOR viene ('axis_x','axis_y','axis_z') y con qué signo.
-        # Por defecto: sensor y robot coinciden (sin rotación de montaje).
-        self.declare_parameter('map_x_from', 'axis_x')
-        self.declare_parameter('map_y_from', 'axis_y')
-        self.declare_parameter('map_z_from', 'axis_z')
-
-        self.declare_parameter('sign_x', 1.0)
-        self.declare_parameter('sign_y', 1.0)
-        self.declare_parameter('sign_z', 1.0)
+        self.declare_parameter('use_ned', True)
 
         self.port = self.get_parameter('port').value
         self.baud = self.get_parameter('baud').value
+        self.use_ned = self.get_parameter('use_ned').value
 
         self.imu_pub = self.create_publisher(Imu, 'imu/data_raw', 10)
         self.mag_pub = self.create_publisher(MagneticField, 'imu/mag', 10)
@@ -90,7 +81,7 @@ class IMUDriver(Node):
             if 'micro' in name or 'arduino' in name:
                 arduino_port = port
                 break
-
+                
         for port, name in by_id_map.items():
             if port != arduino_port:
                 if 'razor' in name or 'ftdi' in name or 'usb-uart' in name or 'usb' in name:
@@ -99,7 +90,7 @@ class IMUDriver(Node):
         # 2. Fallback to candidate scan
         candidates = glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*')
         candidates = sorted(list(set([os.path.realpath(c) for c in candidates])))
-
+        
         for port in candidates:
             if port == arduino_port:
                 continue
@@ -113,28 +104,6 @@ class IMUDriver(Node):
             except Exception:
                 continue
         return None
-
-    def _apply_axis_map(self, vec):
-        """
-        Reordena y aplica signo a un vector [x_sensor, y_sensor, z_sensor]
-        segun los parametros map_*_from y sign_*, devolviendo
-        [x_robot, y_robot, z_robot] en FLU.
-        """
-        idx = {'axis_x': 0, 'axis_y': 1, 'axis_z': 2, 'x': 0, 'y': 1, 'z': 2}
-
-        map_x_from = self.get_parameter('map_x_from').value
-        map_y_from = self.get_parameter('map_y_from').value
-        map_z_from = self.get_parameter('map_z_from').value
-
-        sign_x = self.get_parameter('sign_x').value
-        sign_y = self.get_parameter('sign_y').value
-        sign_z = self.get_parameter('sign_z').value
-
-        x_out = vec[idx[map_x_from]] * sign_x
-        y_out = vec[idx[map_y_from]] * sign_y
-        z_out = vec[idx[map_z_from]] * sign_z
-
-        return [x_out, y_out, z_out]
 
     def read_serial(self):
         if not self.ser or not self.ser.is_open:
@@ -178,30 +147,29 @@ class IMUDriver(Node):
                             0.0, 0.0, 0.01
                         ]
 
-                        # Aplica el mapeo de ejes completo (permutacion + signo)
-                        # que convierte del frame fisico del sensor al frame
-                        # FLU del robot, en un unico paso.
-                        acc_mapped = self._apply_axis_map(acc)
-                        gyro_mapped = self._apply_axis_map(gyro)
-                        mag_mapped = self._apply_axis_map(mag)
-
-                        imu_msg.linear_acceleration.x = acc_mapped[0] * 9.8065
-                        imu_msg.linear_acceleration.y = acc_mapped[1] * 9.8065
-                        imu_msg.linear_acceleration.z = acc_mapped[2] * 9.8065
-
-                        imu_msg.angular_velocity.x = gyro_mapped[0] * (math.pi / 180.0)
-                        imu_msg.angular_velocity.y = gyro_mapped[1] * (math.pi / 180.0)
-                        imu_msg.angular_velocity.z = gyro_mapped[2] * (math.pi / 180.0)
+                        if self.use_ned:
+                            imu_msg.linear_acceleration.x = -acc[0] * 9.8065
+                            imu_msg.linear_acceleration.y = -acc[1] * 9.8065
+                            imu_msg.linear_acceleration.z = acc[2] * 9.8065
+                            imu_msg.angular_velocity.x = -gyro[0] * math.pi / 180.0
+                            imu_msg.angular_velocity.y = -gyro[1] * math.pi / 180.0
+                            imu_msg.angular_velocity.z = gyro[2] * math.pi / 180.0
+                        else:
+                            imu_msg.linear_acceleration.x = -acc[0] * 9.8065
+                            imu_msg.linear_acceleration.y = acc[1] * 9.8065
+                            imu_msg.linear_acceleration.z = -acc[2] * 9.8065
+                            imu_msg.angular_velocity.x = -gyro[0] * math.pi / 180.0
+                            imu_msg.angular_velocity.y = gyro[1] * math.pi / 180.0
+                            imu_msg.angular_velocity.z = -gyro[2] * math.pi / 180.0
 
                         self.imu_pub.publish(imu_msg)
 
                         mag_msg = MagneticField()
                         mag_msg.header.stamp = imu_msg.header.stamp
                         mag_msg.header.frame_id = 'imu_link'
-
-                        mag_msg.magnetic_field.x = mag_mapped[0] * 1e-7
-                        mag_msg.magnetic_field.y = mag_mapped[1] * 1e-7
-                        mag_msg.magnetic_field.z = mag_mapped[2] * 1e-7
+                        mag_msg.magnetic_field.x = -mag[1] * 1e-7
+                        mag_msg.magnetic_field.y = -mag[0] * 1e-7 if self.use_ned else mag[0] * 1e-7
+                        mag_msg.magnetic_field.z = -mag[2] * 1e-7 if self.use_ned else mag[2] * 1e-7
 
                         self.mag_pub.publish(mag_msg)
 

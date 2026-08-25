@@ -6,7 +6,6 @@ from launch.actions import DeclareLaunchArgument, RegisterEventHandler
 from launch.event_handlers import OnProcessStart
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     usv_id = 5
@@ -48,19 +47,8 @@ def generate_launch_description():
         parameters=[{
             'port': LaunchConfiguration('port_imu'),
             'baud': LaunchConfiguration('baud'),
-            # Mapeo de ejes sensor -> robot (FLU), determinado a partir del TF:
-            # el IMU esta fisicamente montado con +Y_sensor apuntando a proa,
-            # +X_sensor apuntando a babor, y Z_sensor invertido respecto a arriba.
-            #   X_robot (adelante)  = +Y_sensor
-            #   Y_robot (izquierda) = +X_sensor
-            #   Z_robot (arriba)    = -Z_sensor
-            # YAML interpreta 'y' y 'n' como booleanos. Usaremos 'axis_x', 'axis_y', 'axis_z'
-            'map_x_from': 'axis_y',
-            'map_y_from': 'axis_x',
-            'map_z_from': 'axis_z',
-            'sign_x': 1.0,
-            'sign_y': 1.0,
-            'sign_z': -1.0,
+            'use_ned': False,
+            'use_flu': True
         }]
     )
 
@@ -90,10 +78,6 @@ def generate_launch_description():
         name='complementary_filter_node',
         namespace=ns,
         output='screen',
-        parameters=[{
-            'use_mag': True,
-            'publish_tf': False
-        }],
         remappings=[
             ('imu/data_raw', 'imu/data_raw'),
             ('imu/mag', 'imu/mag')
