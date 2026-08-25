@@ -24,7 +24,7 @@ class PoseImuOdometryNode(Node):
 
         # Declaración de parámetros ROS 2
         self.declare_parameter('apriltag_odom_topic', '/usv5/odom')
-        self.declare_parameter('imu_topic', '/usv5/flu_imu/data')
+        self.declare_parameter('imu_topic', '/usv5/imu/data')
         self.declare_parameter('odom_topic', '/usv5/imubased_odom')
         self.declare_parameter('frame_id', 'camera')
         self.declare_parameter('child_frame_id', 'imubased_usv5')

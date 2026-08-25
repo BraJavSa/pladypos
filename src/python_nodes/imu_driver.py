@@ -151,7 +151,7 @@ class IMUDriver(Node):
                         
                         imu_msg.angular_velocity.x = gyro[0] * (math.pi / 180.0)
                         imu_msg.angular_velocity.y = gyro[1] * (math.pi / 180.0)
-                        imu_msg.angular_velocity.z = gyro[2] * (math.pi / 180.0)
+                        imu_msg.angular_velocity.z = -gyro[2] * (math.pi / 180.0)
 
                         self.imu_pub.publish(imu_msg)
 
