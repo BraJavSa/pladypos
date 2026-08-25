@@ -25,24 +25,41 @@ class FluImuPublisher(Node):
         self.sub = self.create_subscription(Imu, in_topic, self.imu_cb, 10)
         self.pub = self.create_publisher(Imu, out_topic, 10)
 
-        # Quaternion representing the static rotation from Sensor Frame to Robot Frame (FLU)
-        # Robot X = Sensor Y, Robot Y = Sensor X, Robot Z = -Sensor Z
-        # This corresponds to a 180 deg rotation around the axis (x=1, y=1, z=0)
-        # q = [w=0, x=0.70710678, y=0.70710678, z=0]
-        self.q_offset = (0.0, 0.7071067811865476, 0.7071067811865476, 0.0)
+        # ROTACIÓN MATEMÁTICA EXACTA PEDIDA:
+        # 1. Rotar 180 grados respecto a Y
+        # 2. Rotar 90 grados respecto a Z
+        # En el mismo marco (Extrínseco)
+        
+        # Cuaternión Y 180: w=0, x=0, y=1, z=0
+        q_y = (0.0, 0.0, 1.0, 0.0)
+        
+        # Cuaternión Z 90: w=cos(45)=0.7071, x=0, y=0, z=sin(45)=0.7071
+        q_z = (0.7071067811865476, 0.0, 0.0, 0.7071067811865476)
+        
+        # Rotación extrínseca Z(90) * Y(180) -> Multiplicación de cuaterniones q_z * q_y
+        self.q_offset = quat_mult(q_z, q_y) 
+        # El resultado es w=0.0, x=-0.70710678, y=0.70710678, z=0.0
+        
+        # Matriz de rotación final (derivada de Z90 * Y180):
+        # R = [[0, -1, 0], 
+        #      [-1, 0, 0], 
+        #      [0, 0, -1]]
+        self.R = [
+            [ 0.0, -1.0,  0.0],
+            [-1.0,  0.0,  0.0],
+            [ 0.0,  0.0, -1.0]
+        ]
 
         self.get_logger().info(f"FluImuPublisher started: {in_topic} -> {out_topic}")
+        self.get_logger().info(f"Aplicando Rotacion Fija: 180° en Y seguido de 90° en Z (mismo marco)")
 
     def imu_cb(self, msg: Imu):
         out_msg = Imu()
         out_msg.header = msg.header
-        # Opcional: renombrar el frame_id si lo deseas
         out_msg.header.frame_id = 'imu_link'
 
         # 1. Rotar la Orientacion (Cuaternion)
         q_sensor = (msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z)
-        
-        # q_robot = q_sensor * q_offset
         w, x, y, z = quat_mult(q_sensor, self.q_offset)
         
         out_msg.orientation.w = w
@@ -51,19 +68,18 @@ class FluImuPublisher(Node):
         out_msg.orientation.z = z
         out_msg.orientation_covariance = msg.orientation_covariance
 
-        # 2. Rotar la Velocidad Angular
-        # Robot X = Sensor Y
-        # Robot Y = Sensor X
-        # Robot Z = -Sensor Z
-        out_msg.angular_velocity.x = msg.angular_velocity.y
-        out_msg.angular_velocity.y = msg.angular_velocity.x
-        out_msg.angular_velocity.z = -msg.angular_velocity.z
+        # 2. Rotar la Velocidad Angular usando la matriz R
+        vx, vy, vz = msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z
+        out_msg.angular_velocity.x = self.R[0][0]*vx + self.R[0][1]*vy + self.R[0][2]*vz
+        out_msg.angular_velocity.y = self.R[1][0]*vx + self.R[1][1]*vy + self.R[1][2]*vz
+        out_msg.angular_velocity.z = self.R[2][0]*vx + self.R[2][1]*vy + self.R[2][2]*vz
         out_msg.angular_velocity_covariance = msg.angular_velocity_covariance
 
-        # 3. Rotar la Aceleracion Lineal
-        out_msg.linear_acceleration.x = msg.linear_acceleration.y
-        out_msg.linear_acceleration.y = msg.linear_acceleration.x
-        out_msg.linear_acceleration.z = -msg.linear_acceleration.z
+        # 3. Rotar la Aceleracion Lineal usando la matriz R
+        ax, ay, az = msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z
+        out_msg.linear_acceleration.x = self.R[0][0]*ax + self.R[0][1]*ay + self.R[0][2]*az
+        out_msg.linear_acceleration.y = self.R[1][0]*ax + self.R[1][1]*ay + self.R[1][2]*az
+        out_msg.linear_acceleration.z = self.R[2][0]*ax + self.R[2][1]*ay + self.R[2][2]*az
         out_msg.linear_acceleration_covariance = msg.linear_acceleration_covariance
 
         self.pub.publish(out_msg)
