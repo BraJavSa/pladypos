@@ -71,7 +71,7 @@ class IMUDriver(Node):
                     self.ser.close()
                 except Exception:
                     pass
-            self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
+            self.ser = serial.Serial(self.port, self.baud, timeout=2.0)
             # Enviar comando de inicio de streaming continuo al firmware Razor si aplica
             try:
                 self.ser.write(b"#o1\n")
