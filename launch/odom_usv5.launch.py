@@ -3,7 +3,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
 
-    # 1. Detección de AprilTag → publica /usv5/odom a 20Hz + TF (camera -> usv5)
+    # 1. Detección de AprilTag → publica /usv5/odom a 10Hz + status detection + TF (camera -> usv5)
     apriltag_node = Node(
         package='pladypos',
         executable='apriltag_pose.py',
@@ -11,7 +11,7 @@ def generate_launch_description():
         output='screen',
     )
 
-    # 2. Transformada TF Estática: pool_base_0352 (5.1m arriba de camera, rotado 180° respecto a Y)
+    # 2. Transformada TF Estática: pool_base_0352 (5.1m arriba de camera, rotado 180° respecto a X)
     static_tf_pool_base = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -21,8 +21,8 @@ def generate_launch_description():
             '--x', '0.0',
             '--y', '0.0',
             '--z', '5.1',
-            '--qx', '0.0',
-            '--qy', '1.0',
+            '--qx', '1.0',
+            '--qy', '0.0',
             '--qz', '0.0',
             '--qw', '0.0',
             '--frame-id', 'camera',

@@ -76,7 +76,7 @@ class PoseImuOdometryNode(Node):
         """Toma ÚNICAMENTE la posición 3D (x, y, z) de la odometría del AprilTag."""
         now_sec = time.time()
         pos = msg.pose.pose.position
-        x, y, z = pos.x, pos.y, pos.z
+        x, y, z = pos.x, pos.y, 5.1
 
         if self.prev_pos is not None:
             px, py, pz, pt = self.prev_pos
@@ -137,7 +137,7 @@ class PoseImuOdometryNode(Node):
 
         odom_msg.pose.pose.position.x = x
         odom_msg.pose.pose.position.y = y
-        odom_msg.pose.pose.position.z = z
+        odom_msg.pose.pose.position.z = 5.1
 
         odom_msg.pose.pose.orientation.w = qw
         odom_msg.pose.pose.orientation.x = qx
