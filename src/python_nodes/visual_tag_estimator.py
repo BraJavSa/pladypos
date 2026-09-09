@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""
-apriltag_pose.py
-Nodo ROS 2 headless para detección de AprilTag 36h11 ID=285 desde stream MJPEG.
-Calcula la pose 6D respecto al marco de la cámara (frame top/padre) usando solvePnP
-y publica Odometría (nav_msgs/Odometry) en /usv5/odom a 20 Hz ininterrumpidos.
-Publica la transformada TF directa (camera -> usv5), siendo la cámara el marco raíz (top frame).
-"""
 
 import json
 import math
@@ -24,7 +17,6 @@ from std_msgs.msg import Bool
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 
-# ─── Parámetros por defecto ───────────────────────────────────────────────────
 DEFAULT_STREAM_URL         = "http://10.250.253.1:8083/stream?topic=/camera_0354/camera_0354/image_raw"
 DEFAULT_CALIB_URL          = "http://10.250.253.1:8083/calibration?camera=0354"
 DEFAULT_TAG_ID             = 285
@@ -42,7 +34,6 @@ DEFAULT_CY = 1033.4869
 
 
 def fetch_calibration(calib_url: str):
-    """Obtiene la matriz de calibración K desde la URL o usa valores por defecto."""
     try:
         with urllib.request.urlopen(calib_url, timeout=3) as r:
             data = json.load(r)
@@ -60,7 +51,6 @@ def fetch_calibration(calib_url: str):
 
 
 class MJPEGReader:
-    """Lector asíncrono del stream MJPEG HTTP."""
     def __init__(self, url: str):
         self._url = url
         self._frame = None
@@ -111,7 +101,6 @@ class MJPEGReader:
 
 
 def build_detector():
-    """Construye el detector ArUco/AprilTag compatible con distintas versiones de OpenCV."""
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
     try:
         params = cv2.aruco.DetectorParameters()
@@ -123,7 +112,6 @@ def build_detector():
 
 
 def detect_tag(detector_info, gray, target_id: int):
-    """Detecta el AprilTag con ID especificado y retorna sus esquinas en la imagen."""
     det, params = detector_info
     if params is None:
         corners, ids, _ = det.detectMarkers(gray)
@@ -138,7 +126,6 @@ def detect_tag(detector_info, gray, target_id: int):
 
 
 def rotation_matrix_to_quaternion(R: np.ndarray):
-    """Convierte matriz de rotación 3x3 R a cuaternión normalizado (w, x, y, z)."""
     tr = np.trace(R)
     if tr > 0:
         S = math.sqrt(tr + 1.0) * 2
@@ -172,10 +159,6 @@ def rotation_matrix_to_quaternion(R: np.ndarray):
 
 
 def estimate_pose(corners_px: np.ndarray, tag_size: float, K: np.ndarray, dist: np.ndarray):
-    """
-    Calcula la posición 3D (x, y, z) y la orientación en cuaternión (qw, qx, qy, qz)
-    del AprilTag con respecto al sistema de coordenadas de la cámara.
-    """
     half = tag_size / 2.0
     obj_pts = np.array([
         [-half,  half, 0.0],
@@ -198,39 +181,42 @@ def estimate_pose(corners_px: np.ndarray, tag_size: float, K: np.ndarray, dist: 
         R, _ = cv2.Rodrigues(rvec)
         qw, qx, qy, qz = rotation_matrix_to_quaternion(R)
 
-        return x, y, z, qw, qx, qy, qz
+        max_tilt_rad = math.radians(15.0)
+        cos_max_tilt = math.cos(max_tilt_rad)
+
+        vz = R[2, 2]
+        tilt_valid = bool(vz <= -cos_max_tilt)
+
+        return x, y, z, qw, qx, qy, qz, tilt_valid
     except Exception:
         return None
 
 
 def make_pose_covariance(distance: float):
-    """Matriz de covarianza de pose 6x6 escalada con la distancia al tag."""
     var_pos = max(0.001, 0.01 * (distance ** 2))
     var_rot = max(0.005, 0.03 * (distance ** 2))
     cov = [0.0] * 36
-    cov[0]  = var_pos  # x
-    cov[7]  = var_pos  # y
-    cov[14] = var_pos  # z
-    cov[21] = var_rot  # roll
-    cov[28] = var_rot  # pitch
-    cov[35] = var_rot  # yaw
+    cov[0]  = var_pos
+    cov[7]  = var_pos
+    cov[14] = var_pos
+    cov[21] = var_rot
+    cov[28] = var_rot
+    cov[35] = var_rot
     return cov
 
 
 def make_twist_covariance():
-    """Matriz de covarianza de velocidad 6x6."""
     cov = [0.0] * 36
-    cov[0]  = 0.05  # vx
-    cov[7]  = 0.05  # vy
-    cov[14] = 0.05  # vz
-    cov[21] = 0.1   # wx
-    cov[28] = 0.1   # wy
-    cov[35] = 0.1   # wz
+    cov[0]  = 0.05
+    cov[7]  = 0.05
+    cov[14] = 0.05
+    cov[21] = 0.1
+    cov[28] = 0.1
+    cov[35] = 0.1
     return cov
 
 
 class MovingAverageFilter2D:
-    """Filtro de media móvil 2D con tamaño de ventana configurable."""
     def __init__(self, window_size: int = 6):
         self.window_size = window_size
         self.buf_x = deque(maxlen=window_size)
@@ -249,7 +235,6 @@ class MovingAverageFilter2D:
 
 
 class AlphaBeta1D:
-    """Filtro Alpha-Beta 1D para suavizado y estimación de velocidad."""
     def __init__(self, alpha: float = 0.63, beta: float = 0.37):
         self.alpha = alpha
         self.beta = beta
@@ -276,11 +261,10 @@ class AlphaBeta1D:
         return self.x, self.v
 
 
-class AprilTagPoseNode(Node):
+class VisualTagEstimatorNode(Node):
     def __init__(self):
-        super().__init__("apriltag_pose")
+        super().__init__("visual_tag_estimator")
 
-        # Declarar parámetros ROS 2
         self.declare_parameter("stream_url", DEFAULT_STREAM_URL)
         self.declare_parameter("calib_url", DEFAULT_CALIB_URL)
         self.declare_parameter("tag_id", DEFAULT_TAG_ID)
@@ -326,17 +310,9 @@ class AprilTagPoseNode(Node):
         self.ab_x = AlphaBeta1D(alpha=self.ab_alpha, beta=self.ab_beta)
         self.ab_y = AlphaBeta1D(alpha=self.ab_alpha, beta=self.ab_beta)
         self._last_detection_time = None
+        self._last_valid_orientation = None
         self._prev_x = 0.0
         self._prev_y = 0.0
-
-        self.get_logger().info(
-            f"Nodo apriltag_pose (Publicación en tiempo real + Filtro en cascada MA(N={self.window_size}) -> AlphaBeta):\n"
-            f"  Topic Odometría: {self.odom_topic}\n"
-            f"  Topic Detección Tag: {self.tag_detected_topic}\n"
-            f"  Filtro XY: {'Activado' if self.use_filter else 'Desactivado'} (MA_window={self.window_size}, alpha={self.ab_alpha}, beta={self.ab_beta})\n"
-            f"  TF: {self.camera_frame_id} (top frame) -> {self.usv_frame_id}\n"
-            f"  Tag ID: {self.tag_id} ({self.tag_size} m)"
-        )
 
     def start(self):
         self._reader.start()
@@ -348,7 +324,6 @@ class AprilTagPoseNode(Node):
         self._detection_thread.join(timeout=3)
 
     def _detection_loop(self):
-        """Hilo dedicado a procesar los fotogramas del MJPEG stream."""
         while not self._stop.is_set():
             gray = self._reader.wait_new_frame(timeout=0.5)
             if gray is None:
@@ -362,23 +337,26 @@ class AprilTagPoseNode(Node):
             if res is None:
                 continue
 
-            x, y, z, qw, qx, qy, qz = res
+            x, y, z, qw, qx, qy, qz, tilt_valid = res
             z = 5.1
             now_sec = time.time()
+
+            if tilt_valid:
+                self._last_valid_orientation = (qw, qx, qy, qz)
+            elif self._last_valid_orientation is not None:
+                qw, qx, qy, qz = self._last_valid_orientation
 
             if self.use_filter:
                 if self._last_detection_time is None or (now_sec - self._last_detection_time) > 0.5:
                     self.ma_filter.reset()
                     self.ab_x.reset()
                     self.ab_y.reset()
+                    self._last_valid_orientation = None
                     dt = 0.1
                 else:
                     dt = max(0.001, now_sec - self._last_detection_time)
 
-                # 1. Media móvil de N=6 muestras
                 x_avg, y_avg = self.ma_filter.update(x, y)
-
-                # 2. Filtro Alpha-Beta sobre la media móvil
                 x_filt, vx = self.ab_x.update(x_avg, dt)
                 y_filt, vy = self.ab_y.update(y_avg, dt)
             else:
@@ -394,12 +372,9 @@ class AprilTagPoseNode(Node):
 
             vz = 0.0
             self._last_detection_time = now_sec
-
-            # Publicar ÚNICAMENTE cuando se detecta el tag con éxito
             self._publish_data(x_filt, y_filt, z, qw, qx, qy, qz, vx, vy, vz)
 
     def _publish_tf(self, stamp, x: float, y: float, z: float, qw: float, qx: float, qy: float, qz: float):
-        """Publica la transformada TF directa de la Cámara al USV (camera -> usv5)."""
         if not self.publish_tf:
             return
 
@@ -418,10 +393,8 @@ class AprilTagPoseNode(Node):
         self._tf_br.sendTransform(t_usv)
 
     def _publish_data(self, x: float, y: float, z: float, qw: float, qx: float, qy: float, qz: float, vx: float, vy: float, vz: float):
-        """Publica Odometría, TF y estado de detección al haber una detección válida."""
         stamp = self.get_clock().now().to_msg()
 
-        # 1. Publicar nav_msgs/Odometry
         odom_msg = Odometry()
         odom_msg.header.stamp = stamp
         odom_msg.header.frame_id = self.camera_frame_id
@@ -446,18 +419,16 @@ class AprilTagPoseNode(Node):
 
         self._pub_odom.publish(odom_msg)
 
-        # 2. Publicar estado de detección del tag (std_msgs/Bool = True)
         tag_detected_msg = Bool()
         tag_detected_msg.data = True
         self._pub_tag_detected.publish(tag_detected_msg)
 
-        # 3. Publicar TF (camera -> usv5)
         self._publish_tf(stamp, x, y, z, qw, qx, qy, qz)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = AprilTagPoseNode()
+    node = VisualTagEstimatorNode()
     node.start()
     try:
         rclpy.spin(node)

@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""
-pose_imu_odometry.py
-Nodo ROS 2 que fusiona:
-- Posición 3D (x, y, z) obtenida de la odometría de AprilTag (/usv5/odom)
-- Orientación (cuaternión / yaw) obtenida del tópico de la IMU (/imu/data_raw)
-
-Publica Odometría (nav_msgs/Odometry) y la transformada TF para 'imubased_usv5' a 20 Hz.
-"""
 
 import math
 import time
@@ -18,11 +10,22 @@ from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 
 
-class PoseImuOdometryNode(Node):
-    def __init__(self):
-        super().__init__('pose_imu_odometry')
+def quaternion_to_yaw_camera(qw: float, qx: float, qy: float, qz: float) -> float:
+    r10 = 2.0 * (qx * qy + qw * qz)
+    r00 = 1.0 - 2.0 * (qy * qy + qz * qz)
+    return math.atan2(-r10, r00)
 
-        # Declaración de parámetros ROS 2
+
+def quaternion_to_yaw_imu(qw: float, qx: float, qy: float, qz: float) -> float:
+    siny_cosp = 2.0 * (qw * qz + qx * qy)
+    cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+    return math.atan2(siny_cosp, cosy_cosp)
+
+
+class VisualImuFusionNode(Node):
+    def __init__(self):
+        super().__init__('visual_imu_fusion')
+
         self.declare_parameter('apriltag_odom_topic', '/usv5/odom')
         self.declare_parameter('imu_topic', '/usv5/imu/data')
         self.declare_parameter('odom_topic', '/usv5/imubased_odom')
@@ -30,6 +33,7 @@ class PoseImuOdometryNode(Node):
         self.declare_parameter('child_frame_id', 'imubased_usv5')
         self.declare_parameter('publish_rate', 20.0)
         self.declare_parameter('publish_tf', True)
+        self.declare_parameter('refine_interval_sec', 2.0)
 
         self.apriltag_odom_topic = self.get_parameter('apriltag_odom_topic').value
         self.imu_topic = self.get_parameter('imu_topic').value
@@ -38,42 +42,45 @@ class PoseImuOdometryNode(Node):
         self.child_frame_id = self.get_parameter('child_frame_id').value
         self.rate = float(self.get_parameter('publish_rate').value)
         self.publish_tf = bool(self.get_parameter('publish_tf').value)
+        self.refine_interval = float(self.get_parameter('refine_interval_sec').value)
 
-        # Publicador de odometría fusionada
         self.odom_pub = self.create_publisher(Odometry, self.odom_topic, 10)
         self.tf_broadcaster = TransformBroadcaster(self)
 
-        # Suscripciones: Posición (AprilTag) e IMU (Orientación)
         self.create_subscription(Odometry, self.apriltag_odom_topic, self.apriltag_odom_cb, 10)
         self.create_subscription(Imu, self.imu_topic, self.imu_cb, 10)
 
-        # Estado guardado de posición (AprilTag) e imu (orientación)
-        self.latest_pos = None     # (x, y, z, timestamp)
-        self.prev_pos = None       # (x, y, z, timestamp)
+        self.latest_pos = None
+        self.prev_pos = None
         self.vx = 0.0
         self.vy = 0.0
         self.vz = 0.0
 
-        self.latest_ori = (1.0, 0.0, 0.0, 0.0)  # (qw, qx, qy, qz)
+        self.latest_ori = (0.0, 1.0, 0.0, 0.0)
+        self.latest_raw_imu_yaw = None
+        self.yaw_offset = None
+        self.last_refine_time = 0.0
         self.latest_imu_time = None
         self.last_imu_step_time = None
-        self.yaw = 0.0
+        self.raw_integrated_yaw = 0.0
         self.angular_vel_z = 0.0
 
-        # Timer a frecuencia fija (20 Hz)
         timer_period = 1.0 / self.rate
         self.create_timer(timer_period, self.timer_callback)
 
-        self.get_logger().info(
-            f"Nodo pose_imu_odometry iniciado:\n"
-            f"  Posición XYZ de: {self.apriltag_odom_topic}\n"
-            f"  Orientación de: {self.imu_topic}\n"
-            f"  Odometría publicada en: {self.odom_topic}\n"
-            f"  TF: {self.frame_id} -> {self.child_frame_id} @ {self.rate} Hz"
-        )
+    def update_aligned_orientation(self):
+        if self.latest_raw_imu_yaw is None:
+            return
+
+        if self.yaw_offset is not None:
+            psi_corr = self.latest_raw_imu_yaw + self.yaw_offset
+        else:
+            psi_corr = self.latest_raw_imu_yaw
+
+        half_psi = psi_corr * 0.5
+        self.latest_ori = (0.0, math.cos(half_psi), -math.sin(half_psi), 0.0)
 
     def apriltag_odom_cb(self, msg: Odometry):
-        """Toma ÚNICAMENTE la posición 3D (x, y, z) de la odometría del AprilTag."""
         now_sec = time.time()
         pos = msg.pose.pose.position
         x, y, z = pos.x, pos.y, 5.1
@@ -89,36 +96,40 @@ class PoseImuOdometryNode(Node):
         self.prev_pos = (x, y, z, now_sec)
         self.latest_pos = (x, y, z, now_sec)
 
+        ori_tag = msg.pose.pose.orientation
+        if not (ori_tag.w == 0.0 and ori_tag.x == 0.0 and ori_tag.y == 0.0 and ori_tag.z == 0.0):
+            yaw_tag = quaternion_to_yaw_camera(ori_tag.w, ori_tag.x, ori_tag.y, ori_tag.z)
+
+            if self.latest_raw_imu_yaw is not None:
+                diff = yaw_tag - self.latest_raw_imu_yaw
+                self.yaw_offset = math.atan2(math.sin(diff), math.cos(diff))
+                self.update_aligned_orientation()
+
     def imu_cb(self, msg: Imu):
-        """Toma ÚNICAMENTE la orientación de la IMU."""
         now_sec = time.time()
         ori = msg.orientation
         self.angular_vel_z = msg.angular_velocity.z
 
-        # Si la IMU proporciona cuaternión de orientación válido
         if not (ori.w == 0.0 and ori.x == 0.0 and ori.y == 0.0 and ori.z == 0.0):
-            self.latest_ori = (ori.w, ori.x, ori.y, ori.z)
+            raw_qw, raw_qx, raw_qy, raw_qz = ori.w, ori.x, ori.y, ori.z
+            self.latest_raw_imu_yaw = quaternion_to_yaw_imu(raw_qw, raw_qx, raw_qy, raw_qz)
         else:
-            # Si son lecturas de IMU sin cuaternión directo, integramos la velocidad angular (yaw)
             if self.last_imu_step_time is not None:
                 dt = now_sec - self.last_imu_step_time
                 if 0.0001 < dt < 1.0:
-                    self.yaw += msg.angular_velocity.z * dt
-                    # Normalizar yaw a [-pi, pi]
-                    self.yaw = (self.yaw + math.pi) % (2 * math.pi) - math.pi
+                    self.raw_integrated_yaw += msg.angular_velocity.z * dt
+                    self.raw_integrated_yaw = (self.raw_integrated_yaw + math.pi) % (2 * math.pi) - math.pi
 
-            half_yaw = self.yaw * 0.5
-            self.latest_ori = (math.cos(half_yaw), 0.0, 0.0, math.sin(half_yaw))
+            self.latest_raw_imu_yaw = self.raw_integrated_yaw
 
+        self.update_aligned_orientation()
         self.last_imu_step_time = now_sec
         self.latest_imu_time = now_sec
 
     def timer_callback(self):
-        """Calcula y publica la odometría fusionada y la TF para 'imubased_usv5' a 20 Hz."""
         stamp = self.get_clock().now().to_msg()
         now_sec = time.time()
 
-        # Determinar posición 3D de AprilTag (o cero si no hay datos recientmente)
         if self.latest_pos is not None and (now_sec - self.latest_pos[3]) <= 1.0:
             x, y, z, _ = self.latest_pos
             vx, vy, vz = self.vx, self.vy, self.vz
@@ -126,10 +137,8 @@ class PoseImuOdometryNode(Node):
             x, y, z = 0.0, 0.0, 0.0
             vx, vy, vz = 0.0, 0.0, 0.0
 
-        # Determinar orientación tomada exclusivamente de la IMU
         qw, qx, qy, qz = self.latest_ori
 
-        # 1. Publicar nav_msgs/Odometry fusionada
         odom_msg = Odometry()
         odom_msg.header.stamp = stamp
         odom_msg.header.frame_id = self.frame_id
@@ -169,7 +178,6 @@ class PoseImuOdometryNode(Node):
 
         self.odom_pub.publish(odom_msg)
 
-        # 2. Publicar Transformada TF (camera -> imubased_usv5)
         if self.publish_tf:
             tf_msg = TransformStamped()
             tf_msg.header.stamp = stamp
@@ -190,7 +198,7 @@ class PoseImuOdometryNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = PoseImuOdometryNode()
+    node = VisualImuFusionNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
