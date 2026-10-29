@@ -112,18 +112,20 @@ The system pipeline is split between the **USV (Boat)** and the **GCS (Ground Co
 
 ### 3.1 On the USV (Boat)
 
-1. **Core Vehicle Hardware & Thruster Controls:**
-   Launches the serial bridge to the Arduino Micro and the thruster mixer:
-   ```bash
-   ros2 launch pladypos core.launch.py
-   ```
+**Unified USV Launcher (Manual Control + IMU Telemetry):**
+Starts the entire onboard pipeline in a single command:
+* **Arduino Bridge:** Decodes Spektrum RC radio channels and sends PWM thruster commands.
+* **Teleoperation Mixer:** Maps joystick commands (`joy`) to thruster forces.
+* **IMU Driver & Madgwick Filter:** Streams calibrated IMU and magnetometer data, fusing orientation into `imu/data`.
 
-2. **IMU Driver & Madgwick Filter:**
-   Launches the Razor IMU M0 driver and the Madgwick fusion filter:
-   ```bash
-   ros2 launch pladypos imu.launch.py
-   ```
-   *(Publishes `/usv5/imu/data_raw`, calibrated `/usv5/imu/mag`, and fused orientation `/usv5/imu/data`)*
+```bash
+# Standard launch (auto-detects serial ports for Arduino and IMU):
+ros2 launch pladypos core.launch.py
+
+# If the gamepad joystick is connected directly to the USV:
+ros2 launch pladypos core.launch.py use_joy:=true
+```
+*(If you only need to run the IMU without the motor/radio bridge, you can still run `ros2 launch pladypos imu.launch.py`)*
 
 ### 3.2 On the GCS (Control PC)
 
