@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Verifica la orientacion fisica de los ejes de la IMU.
+Verifies the physical orientation of the IMU axes.
 
-Imprime en vivo ax, ay, az crudos (en g) para que puedas:
-  1. Poner la IMU plana sobre la mesa y ver que eje marca ~+/-1g (ese es Z).
-  2. Voltearla boca abajo y confirmar que ese mismo eje invierte signo.
-  3. Pararla de canto en cada lado para identificar X e Y.
+Prints live raw ax, ay, az readings (in g) so you can:
+  1. Place the IMU flat on a table and observe which axis reads ~ +/- 1g (that is Z).
+  2. Turn it upside down and confirm that same axis flips its sign.
+  3. Stand it on its edges to identify the X and Y axes.
 
-Uso:
+Usage:
     python3 check_axes.py --port /dev/ttyACM0
 """
 
@@ -32,13 +32,13 @@ def main():
     ap.add_argument("--baud", type=int, default=115200)
     args = ap.parse_args()
 
-    print(f"Abriendo {args.port} @ {args.baud}...")
+    print(f"Opening {args.port} @ {args.baud}...")
     ser = serial.Serial(args.port, args.baud, timeout=1)
     time.sleep(2)
     ser.reset_input_buffer()
 
-    print("Leyendo... Ctrl+C para salir.")
-    print("Mueve la IMU: plana / boca abajo / de canto en cada lado, y observa cual eje marca ~1g.\n")
+    print("Reading... Press Ctrl+C to exit.")
+    print("Move the IMU: flat / upside down / on each edge, and note which axis reads ~1g.\n")
 
     try:
         while True:
@@ -50,7 +50,7 @@ def main():
             mag = (ax**2 + ay**2 + az**2) ** 0.5
             print(f"ax={ax:+.3f}  ay={ay:+.3f}  az={az:+.3f}   |mag|={mag:.3f}", end="\r")
     except KeyboardInterrupt:
-        print("\nSaliendo.")
+        print("\nExiting.")
     finally:
         ser.close()
 

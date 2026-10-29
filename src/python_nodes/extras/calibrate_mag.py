@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 """
-Calibracion de magnetometro (hard-iron y soft-iron) para la
+Magnetometer calibration (hard-iron and soft-iron) for the
 SparkFun 9DoF Razor IMU M0.
 
-Que hace:
-  1. Captura mx,my,mz crudos durante N segundos mientras mueves la IMU
-     dibujando figuras de "8" en el aire, cubriendo tantas orientaciones
-     como puedas (arriba/abajo, de lado, girando en todos los ejes).
-  2. Calcula el offset de hard-iron: offset = (max + min) / 2 por eje.
-  3. Calcula un factor de escala de soft-iron simple (normaliza el
-     "radio" de cada eje para que la nube de puntos se aproxime a una
-     esfera en vez de un elipsoide).
-  4. Imprime los valores listos para usar como parametros ROS2:
+What it does:
+  1. Captures raw mx, my, mz samples for N seconds while moving the IMU
+     in figure-8 patterns in the air, covering as many orientations
+     as possible (up/down, sideways, rotating on all axes).
+  2. Computes the hard-iron offset: offset = (max + min) / 2 per axis.
+  3. Computes a simple soft-iron scale factor (normalizes the "radius"
+     of each axis so the point cloud approximates a sphere rather than an ellipsoid).
+  4. Prints values ready to use as ROS 2 parameters:
        mag_offset_x, mag_offset_y, mag_offset_z
 
-Uso:
+Usage:
     python3 calibrate_mag.py --port /dev/ttyACM0 --seconds 40
 
-Durante la captura: mueve la IMU LENTO y dibujando figuras de 8,
-tratando de apuntarla en tantas direcciones distintas como puedas
-(no solo girar en un plano).
+During capture: move the IMU SLOWLY in figure-8 motions, aiming it
+in as many 3D directions as possible (not just rotating in a single 2D plane).
 """
 
 import argparse
@@ -44,21 +42,21 @@ def main():
     ap.add_argument("--seconds", type=float, default=40.0)
     args = ap.parse_args()
 
-    print(f"Abriendo {args.port} @ {args.baud}...")
+    print(f"Opening {args.port} @ {args.baud}...")
     ser = serial.Serial(args.port, args.baud, timeout=1)
     time.sleep(2)
     ser.reset_input_buffer()
 
-    print(f"\nCapturando durante {args.seconds:.0f} segundos.")
-    print("Mueve la IMU LENTO dibujando figuras de 8 en el aire,")
-    print("cubriendo tantas orientaciones distintas como puedas.\n")
-    print("Iniciando en 3...")
+    print(f"\nCapturing for {args.seconds:.0f} seconds.")
+    print("Move the IMU SLOWLY drawing figure-8 motions in the air,")
+    print("covering as many distinct 3D orientations as possible.\n")
+    print("Starting in 3...")
     time.sleep(1)
     print("2...")
     time.sleep(1)
     print("1...")
     time.sleep(1)
-    print("YA! Mueve la IMU ahora.\n")
+    print("GO! Move the IMU now.\n")
 
     mx_min = my_min = mz_min = float("inf")
     mx_max = my_max = mz_max = float("-inf")
@@ -79,32 +77,31 @@ def main():
             count += 1
 
             remaining = t_end - time.time()
-            print(f"Muestras: {count}   Tiempo restante: {remaining:4.1f}s", end="\r")
+            print(f"Samples: {count}   Remaining time: {remaining:4.1f}s", end="\r")
     except KeyboardInterrupt:
-        print("\nCaptura interrumpida por el usuario.")
+        print("\nCapture interrupted by user.")
     finally:
         ser.close()
 
-    print("\n\n--- Captura terminada ---")
-    print(f"Muestras totales: {count}")
+    print("\n\n--- Capture finished ---")
+    print(f"Total samples: {count}")
 
     if count < 100:
-        print("\n⚠ Muy pocas muestras. Repite la calibracion moviendo mas tiempo/lento.")
+        print("\n⚠ Too few samples. Please repeat calibration moving for longer / slower.")
         return
 
-    print(f"\nRangos crudos:")
+    print(f"\nRaw ranges:")
     print(f"  mx: [{mx_min:.3f}, {mx_max:.3f}]")
     print(f"  my: [{my_min:.3f}, {my_max:.3f}]")
     print(f"  mz: [{mz_min:.3f}, {mz_max:.3f}]")
 
-    # Hard-iron offset: centro de cada rango
+    # Hard-iron offset: midpoint of each range
     offset_x = (mx_max + mx_min) / 2.0
     offset_y = (my_max + my_min) / 2.0
     offset_z = (mz_max + mz_min) / 2.0
 
-    # Soft-iron: radio (semi-rango) de cada eje, normalizado contra
-    # el promedio de los tres radios. Esto da un factor de escala
-    # opcional para que la nube de puntos se aproxime a una esfera.
+    # Soft-iron: radius (semi-range) of each axis, normalized against
+    # the average radius of all three axes.
     radius_x = (mx_max - mx_min) / 2.0
     radius_y = (my_max - my_min) / 2.0
     radius_z = (mz_max - mz_min) / 2.0
@@ -114,22 +111,22 @@ def main():
     scale_y = avg_radius / radius_y if radius_y > 1e-6 else 1.0
     scale_z = avg_radius / radius_z if radius_z > 1e-6 else 1.0
 
-    print("\n=== HARD-IRON OFFSETS (usar como parametros ROS2) ===")
+    print("\n=== HARD-IRON OFFSETS (Use as ROS 2 parameters) ===")
     print(f"  mag_offset_x: {offset_x:.6f}")
     print(f"  mag_offset_y: {offset_y:.6f}")
     print(f"  mag_offset_z: {offset_z:.6f}")
 
-    print("\n=== SOFT-IRON SCALE FACTORS (opcional, no soportado aun por el nodo) ===")
+    print("\n=== SOFT-IRON SCALE FACTORS (Optional) ===")
     print(f"  mag_scale_x: {scale_x:.6f}")
     print(f"  mag_scale_y: {scale_y:.6f}")
     print(f"  mag_scale_z: {scale_z:.6f}")
 
-    print("\nPara usar los offsets con tu nodo ROS2:")
-    print("  ros2 run <paquete> imu_ros2_node.py --ros-args \\")
+    print("\nTo pass these offsets to your ROS 2 driver node:")
+    print("  ros2 run pladypos driver_imu.py --ros-args \\")
     print(f"    -p mag_offset_x:={offset_x:.6f} \\")
     print(f"    -p mag_offset_y:={offset_y:.6f} \\")
     print(f"    -p mag_offset_z:={offset_z:.6f}")
-    print("\n(o agrega esos valores a un archivo YAML de parametros)")
+    print("\n(or update DEFAULT_MAG_OFFSET in driver_imu.py or your YAML parameters)")
 
 
 if __name__ == "__main__":

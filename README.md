@@ -1,6 +1,6 @@
 # PlaDyPos: ROS 2 Control, Actuator Allocation & Telemetry Package
 
-ROS 2 package for control, actuator mixing, sensor telemetry, and camera/depth streaming of the **PlaDyPos USV**, developed for **ROS 2 Jazzy**.
+ROS 2 package for control, actuator mixing, sensor telemetry, and visual localization of the **PlaDyPos USV**, developed for **ROS 2 Jazzy** on **Ubuntu 24.04**.
 
 ---
 
@@ -9,188 +9,185 @@ ROS 2 package for control, actuator mixing, sensor telemetry, and camera/depth s
 This package is designed and tested on **Ubuntu 24.04** running **ROS 2 Jazzy**.
 
 ### 1.1 Install ROS 2 Development Tools
-Ensure you have the standard developer tools and ROS 2 dependencies:
+Ensure you have the standard developer tools and ROS 2 dependencies installed:
 ```bash
 sudo apt update
 sudo apt install -y ros-dev-tools
 ```
 
 ### 1.2 Install Python & ROS 2 Dependencies
-The camera streaming, point cloud, and motor mapping nodes require OpenCV, cv_bridge, Boost, and YAML. Run this on both the GCS and the USV:
+Install the required packages for AprilTag vision, motor mixing, teleoperation, and IMU fusion:
 ```bash
 sudo apt update
-sudo apt install -y python3-opencv python3-yaml python3-numpy libboost-all-dev \
-  ros-jazzy-cv-bridge ros-jazzy-image-transport ros-jazzy-camera-info-manager \
-  ros-jazzy-depth-image-proc ros-jazzy-compressed-depth-image-transport \
-  ros-jazzy-compressed-image-transport
+sudo apt install -y python3-opencv python3-yaml python3-numpy python3-serial \
+  libboost-all-dev ros-jazzy-cv-bridge ros-jazzy-image-transport \
+  ros-jazzy-camera-info-manager ros-jazzy-imu-filter-madgwick \
+  ros-jazzy-joy ros-jazzy-tf2-ros
 ```
 
 ---
 
-## 2. Xbox One Kinect (Kinect v2) Installation on USV
+## 2. Microcontroller & IMU Firmware Setup (Ubuntu Server 24.04)
 
-For full RGB-D camera and 3D PointCloud capabilities on the USV, the community-maintained driver `kinect2_ros2` is used.
+Both the onboard **Arduino Micro** (actuators/safety watchdog) and the **SparkFun 9DoF Razor IMU M0** (attitude and telemetry sensor) are programmed via command-line using `arduino-cli`.
 
-### 2.1 Build and Install `libfreenect2` from Source
-Due to the lack of prepackaged binaries for `libfreenect2` on Ubuntu 24.04, it must be compiled from source on the USV:
+### 2.1 Install Arduino CLI
+Download and install the official binary to your system PATH:
 ```bash
-# 1. Install compilation and USB dependencies
-sudo apt update
-sudo apt install -y build-essential cmake pkg-config libusb-1.0-0-dev libturbojpeg0-dev libtool autoconf libudev-dev
-
-# 2. Clone and compile libfreenect2
-cd ~
-git clone https://github.com/OpenKinect/libfreenect2.git
-cd libfreenect2
-mkdir build && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr
-make -j$(nproc)
-sudo make install
-```
-
-### 2.2 Configure USB Permissions & Blacklist Conflicting Kernel Modules
-The default Linux kernel driver `gspca_kinect` conflicts with `libfreenect2` by claiming the USB device. We must blacklist it and set up permissions on the USV:
-```bash
-# 1. Install the Kinect v2 udev rules
-sudo cp ~/libfreenect2/platform/linux/udev/90-kinect2.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules && sudo udevadm trigger
-
-# 2. Unload currently loaded conflicting kernel modules
-sudo modprobe -r gspca_kinect gspca_main
-
-# 3. Permanently blacklist conflicting modules
-echo "blacklist gspca_kinect" | sudo tee -a /etc/modprobe.d/blacklist.conf
-echo "blacklist gspca_main" | sudo tee -a /etc/modprobe.d/blacklist.conf
-```
-*Note: Unplug and replug the Kinect v2's USB 3.0 connector to reload permissions.*
-
-### 2.3 Clone and Patch `kinect2_ros2`
-Clone the driver into the USV workspace (`~/ros2usv_ws`) and apply compatibility patches for ROS 2 Jazzy:
-```bash
-# 1. Clone the driver
-cd ~/ros2usv_ws/src
-git clone https://github.com/YuLiHN/kinect2_ros2.git
-
-# 2. Patch: Replace deprecated cv_bridge.h with cv_bridge.hpp
-find ~/ros2usv_ws/src/kinect2_ros2 -type f -exec sed -i 's/cv_bridge\/cv_bridge.h/cv_bridge\/cv_bridge.hpp/g' {} +
-
-# 3. Patch: Set 'sensor' serial parameter to an empty string '' in kinect2_bridge.launch.py.
-# This prevents ROS 2 YAML type parsing issues (interpreting numeric serials with '8' or '9' as double/floats)
-# and enables automatic plug-and-play detection of the first connected camera.
-sed -i "s/'sensor': '004436460547'/'sensor': ''/g" ~/ros2usv_ws/src/kinect2_ros2/kinect2_bridge/launch/kinect2_bridge.launch.py
-```
-
-### 2.4 Compile the Workspace on the USV
-```bash
-cd ~/ros2usv_ws
-rm -rf build/ install/ log/  # Clear cache
-source /opt/ros/jazzy/setup.bash
-colcon build --symlink-install
-```
-
----
-
-## 3. Arduino CLI Terminal Setup
-
-The onboard Arduino Micro manages the DC-DC regulator, thruster PWM signals, watchdog safety loop, and motor telemetry feedback. Follow these steps to configure and upload code using only the terminal.
-
-### 3.1 Install Arduino CLI
-Run the following script to install the latest version of `arduino-cli` into your local path:
-```bash
-# Download and install the binary
 curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
-
-# Move it to a folder in your PATH (e.g., /usr/local/bin)
 sudo mv bin/arduino-cli /usr/local/bin/
-
-# Verify the installation
 arduino-cli version
 ```
 
-### 3.2 Configure Board Indexes & Cores
-To target the Arduino Micro, download and install the AVR core:
+Ensure your user has read/write permissions for USB serial devices:
 ```bash
-# Update board index
-arduino-cli core update-index
-
-# Install AVR board package (for Arduino Micro / Leonardo / Uno / Mega)
-arduino-cli core install arduino:avr
+sudo usermod -a -G dialout $USER
+# Log out and log back in, or run: newgrp dialout
 ```
 
-### 3.3 Compile and Upload Firmware
+### 2.2 Configure Board Indexes & Cores
+Configure the package manager to support both AVR (Arduino Micro) and SAMD (SparkFun Razor M0):
+```bash
+# Add SparkFun package index URL
+arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/sparkfun/Arduino_Boards/master/IDE_Board_Manager/package_sparkfun_index.json
+
+# Update board indexes
+arduino-cli core update-index
+
+# Install AVR core (for Arduino Micro)
+arduino-cli core install arduino:avr
+
+# Install SparkFun SAMD core (for SparkFun 9DoF Razor IMU M0)
+arduino-cli core install SparkFun:samd
+```
+
+### 2.3 Compile and Upload Arduino Micro Firmware (`usv_bridge`)
+The Arduino Micro sketch manages DC-DC regulation, thruster PWM signals, motor telemetry, and the watchdog safety loop.
+
 From the root of your workspace:
 ```bash
 # Compile the sketch
 arduino-cli compile --fqbn arduino:avr:micro src/pladypos/arduino/usv_bridge/
 
-# Upload the sketch (Make sure to verify the port name, e.g. /dev/ttyACM0)
+# Upload the sketch (verify the port, e.g., /dev/ttyACM0 or /dev/ttyACM1)
 arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:avr:micro src/pladypos/arduino/usv_bridge/
 ```
 
----
+### 2.4 Compile and Upload SparkFun 9DoF Razor IMU M0 Firmware
+The IMU runs the official open-source SparkFun Razor M0 default firmware. It can be cloned temporarily to compile and flash:
 
-## 4. Launching the System
-
-The control pipeline is split between the GCS (Ground Control Station) and the USV (Barco) for performance and safety.
-
-### 4.1 On the USV (Barco)
-Choose one of the following unified launcher options:
-
-* **Option A: Full RGB-D & 3D PointCloud Mode** (Vehicle controls + full 3D point cloud streaming):
-  ```bash
-  ros2 launch pladypos kinect.launch.py
-  ```
-* **Option B: Webcam-Only Mode** (Vehicle controls + 2D color image streaming only; disables heavy depth/pointcloud processing to save CPU and Wi-Fi bandwidth):
-  ```bash
-  ros2 launch pladypos webcam.launch.py
-  ```
-* **Option C: Core Hardware Mode** (Vehicle controls only):
-  ```bash
-  ros2 launch pladypos core.launch.py
-  ```
-
-### 4.2 On the GCS (PC with Joystick)
-Launches the physical joystick node:
+1. **Install required libraries:**
 ```bash
-ros2 launch pladypos gcs.launch.py
+arduino-cli lib install "SparkFun MPU9250-DMP"
+arduino-cli lib install "FlashStorage"
+```
+
+2. **Clone the official repository to a temporary directory:**
+```bash
+git clone https://github.com/sparkfun/9DOF_Razor_IMU.git /tmp/9DOF_Razor_IMU
+```
+
+3. **Compile the sketch:**
+```bash
+arduino-cli compile --fqbn SparkFun:samd:samd21_9dof /tmp/9DOF_Razor_IMU/Firmware/_9DoF_Razor_M0_Firmware/
+```
+
+4. **Upload the sketch to the IMU:**
+```bash
+# Verify the serial port (e.g., /dev/ttyACM0 or /dev/ttyACM1)
+arduino-cli upload -p /dev/ttyACM0 --fqbn SparkFun:samd:samd21_9dof /tmp/9DOF_Razor_IMU/Firmware/_9DoF_Razor_M0_Firmware/
+```
+> *Tip: If the serial port is not detected or upload fails, quickly double-press the physical reset button on the Razor IMU M0 board to force it into bootloader mode (the onboard blue/green LED will pulse slowly).*
+
+5. **Clean up temporary files:**
+```bash
+rm -rf /tmp/9DOF_Razor_IMU
 ```
 
 ---
 
-## 5. Diagnostic & Utility Tools
+## 3. Launching the System
 
-### 5.1 Motor Mapping Calibration GUI
+The system pipeline is split between the **USV (Boat)** and the **GCS (Ground Control Station)**:
+
+### 3.1 On the USV (Boat)
+
+1. **Core Vehicle Hardware & Thruster Controls:**
+   Launches the serial bridge to the Arduino Micro and the thruster mixer:
+   ```bash
+   ros2 launch pladypos core.launch.py
+   ```
+
+2. **IMU Driver & Madgwick Filter:**
+   Launches the Razor IMU M0 driver and the Madgwick fusion filter:
+   ```bash
+   ros2 launch pladypos imu.launch.py
+   ```
+   *(Publishes `/usv5/imu/data_raw`, calibrated `/usv5/imu/mag`, and fused orientation `/usv5/imu/data`)*
+
+### 3.2 On the GCS (Control PC)
+
+1. **Manual Joystick Teleoperation:**
+   Publishes joystick input from a connected gamepad:
+   ```bash
+   ros2 launch pladypos manual_control.launch.py
+   ```
+
+2. **Visual Localization & Pose Fusion:**
+   Launches the AprilTag tag estimator and visual-IMU fusion nodes:
+   ```bash
+   ros2 launch pladypos gcs.launch.py
+   ```
+
+---
+
+## 4. Diagnostic & Calibration Tools
+
+### 4.1 Motor Mapping Calibration GUI
 If thruster wires are swapped or physical configurations change, run this visual wizard on your GCS to identify which channel maps to which physical motor corner:
 ```bash
 ros2 run pladypos motor_mapper.py
 ```
-This utility will pulse each motor at 30% thrust for 4 seconds, ask you to select its physical location, and save the result dynamically to `config/motor_mapping.yaml`. The mixer node (`teleop_mixer.py`) automatically loads this file at startup.
+This utility will pulse each motor at 30% thrust for 4 seconds, prompt you to select its physical location, and dynamically save the configuration to `config/motor_mapping.yaml`. The mixer node (`teleop_mixer.py`) automatically loads this file at startup.
 
-### 5.2 Real-time Kinect Camera & PointCloud Visualization
-* **2D Video Feed:** To view RGB/Depth feeds, open a terminal on your GCS and run:
-  ```bash
-  ros2 run rqt_image_view rqt_image_view
-  ```
-  Select the topic `/kinect2/qhd/image_color_rect` or `/kinect2/qhd/image_depth_rect`.
-* **3D PointCloud:** To view the 3D depth point cloud, open a terminal on your GCS and run:
-  ```bash
-  rviz2
-  ```
-  Add a `PointCloud2` display, subscribe to `/kinect2/qhd/points`, and set the **Fixed Frame** to `kinect2_link`.
+### 4.2 IMU RViz2 Real-Time Visualization
+To visualize the real-time attitude of the IMU in RViz2:
+1. Run the IMU launch on the USV:
+   ```bash
+   ros2 launch pladypos imu.launch.py
+   ```
+2. In another terminal, broadcast the initial zero-referenced transform (`odom -> imu_link`):
+   ```bash
+   python3 src/pladypos/src/python_nodes/extras/imu_tf.py --ros-args -r __ns:=/usv5
+   ```
+3. Open `rviz2`, set the **Fixed Frame** to `odom`, and add a **TF** or **Axes** display referenced to `imu_link`.
+
+### 4.3 Magnetometer Hard-Iron Calibration
+If the magnetic environment changes or the sensor is remounted, run the 40-second calibration routine while drawing figure-8 patterns in the air:
+```bash
+python3 src/pladypos/src/python_nodes/extras/calibrate_mag.py --port /dev/ttyACM0 --seconds 40
+```
+This will compute the new hard-iron offsets (`mag_offset_x`, `mag_offset_y`, `mag_offset_z`) to update in `driver_imu.py`.
+
+### 4.4 IMU Physical Axis Verification
+To verify the physical orientation and gravitational reading on each axis:
+```bash
+python3 src/pladypos/src/python_nodes/extras/check_axes.py --port /dev/ttyACM0
+```
 
 ---
 
-## 6. Vehicle Characteristics (Physical Platform)
+## 5. Vehicle Characteristics (Physical Platform)
 
 * **Dimensions:** 756 x 756 x 280 mm
 * **Weight:** 25.0 kg
 * **Payload:** 5.0 kg + water displacement
-* **Maneuverable:** 4 thrusters in an X-configuration enable omnidirectional motion and dynamic positioning (DP) at arbitrary orientations.
+* **Maneuverability:** 4 thrusters in an X-configuration enable omnidirectional motion and dynamic positioning (DP) at arbitrary orientations.
 * **Development Context:** The physical platform was designed by LABUST (see [PlaDyFleet Website](https://pladyfleet.fer.hr/pladyfleet/pladypos)). This ROS 2 package update was developed by the German Research Center for Artificial Intelligence (DFKI).
 
 ---
 
-## 7. Telemetry & Control Vector Mappings
+## 6. Telemetry & Control Vector Mappings
 
 The USV outputs its current thruster efforts on the ROS 2 topic `motor_feedback` (type `std_msgs/Float32MultiArray`) at **30 Hz**. The values represent normalized thruster forces ranging from `-1.0` (maximum reverse thrust) to `1.0` (maximum forward thrust).
 

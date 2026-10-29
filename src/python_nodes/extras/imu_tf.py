@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
-Publica el TF odom -> imu_link a partir de la orientacion ya fusionada
-por imu_filter_madgwick (topic imu/data), relativa a la pose inicial
-al arrancar.
+Publishes the TF transform odom -> imu_link from the orientation fused
+by imu_filter_madgwick (topic imu/data), relative to the initial startup pose.
 
-Este nodo NO hardcodea el namespace: se suscribe a "imu/data" (relativo).
-Si lo corres dentro del namespace usv5 (por launch o con --ros-args -r
-__ns:=/usv5), automaticamente escucha /usv5/imu/data.
+This node does NOT hardcode the namespace: it subscribes to "imu/data" relatively.
+If launched within the usv5 namespace (via launch or with --ros-args -r __ns:=/usv5),
+it automatically listens to /usv5/imu/data.
 
-Uso manual (fuera de launch), especificando el namespace:
+Standalone manual usage (specifying namespace):
     source /opt/ros/jazzy/setup.bash
     python3 imu_tf.py --ros-args -r __ns:=/usv5
 
-Uso dentro de un launch file (recomendado, mismo patron que el resto
-del proyecto): agregar como Node(package='pladypos',
-executable='imu_tf.py', namespace=ns, ...)
+Usage within launch files (recommended):
+    Node(package='pladypos', executable='imu_tf.py', namespace=ns, ...)
 """
 
 import rclpy
@@ -25,7 +23,7 @@ from tf2_ros import TransformBroadcaster
 
 
 def quat_mul(q1, q2):
-    """Multiplicacion de cuaterniones (x,y,z,w) * (x,y,z,w) -> (x,y,z,w)."""
+    """Quaternion multiplication (x,y,z,w) * (x,y,z,w) -> (x,y,z,w)."""
     x1, y1, z1, w1 = q1
     x2, y2, z2, w2 = q2
     return (
@@ -46,13 +44,12 @@ class ImuTfNode(Node):
         super().__init__("imu_tf_broadcaster")
 
         self.tf_broadcaster = TransformBroadcaster(self)
-        self.q0_inv = None  # inversa de la orientacion inicial (pose cero)
+        self.q0_inv = None  # inverse of initial orientation (zero reference pose)
 
-        # Suscripcion relativa: respeta el namespace con el que se
-        # lance el nodo (ej. dentro de /usv5 -> escucha /usv5/imu/data)
+        # Relative topic subscription: respects node namespace (e.g. /usv5 -> /usv5/imu/data)
         self.sub = self.create_subscription(Imu, "imu/data", self.on_imu, 10)
         resolved_topic = self.sub.topic_name
-        self.get_logger().info(f"Esperando {resolved_topic} (ya fusionado por Madgwick)...")
+        self.get_logger().info(f"Waiting for {resolved_topic} (fused by Madgwick)...")
 
     def on_imu(self, msg: Imu):
         q = (
@@ -64,10 +61,10 @@ class ImuTfNode(Node):
 
         if self.q0_inv is None:
             self.q0_inv = quat_conj(q)
-            self.get_logger().info("Pose inicial capturada (sera el cero).")
+            self.get_logger().info("Initial pose captured (set as reference zero).")
             return
 
-        # Orientacion relativa a la pose inicial: q_rel = q0^-1 * q
+        # Orientation relative to initial pose: q_rel = q0^-1 * q
         qx, qy, qz, qw = quat_mul(self.q0_inv, q)
 
         t = TransformStamped()

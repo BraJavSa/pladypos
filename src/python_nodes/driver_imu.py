@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
 """
-Driver serial para la SparkFun 9DoF Razor IMU M0 (ROS2 Jazzy).
+Serial driver for SparkFun 9DoF Razor IMU M0 (ROS 2 Jazzy).
 
-No calcula orientacion: solo lee el serial y publica los datos crudos
-(accel+gyro y magnetometro ya calibrado con hard-iron), para que
-imu_filter_madgwick haga la fusion.
+Does not compute orientation internally: reads raw serial data and publishes
+raw accelerometer + gyroscope and hard-iron calibrated magnetometer data,
+allowing imu_filter_madgwick to perform the sensor fusion.
 
-Publica:
-  - imu/data_raw   (sensor_msgs/Imu)           accel [m/s^2] + gyro [rad/s]
-                    orientation sin usar (covarianza[0] = -1)
-  - imu/mag        (sensor_msgs/MagneticField)  magnetometro calibrado
+Publishes:
+  - imu/data_raw   (sensor_msgs/Imu)            accel [m/s^2] + gyro [rad/s]
+                    orientation unused (covariance[0] = -1)
+  - imu/mag        (sensor_msgs/MagneticField)  calibrated magnetometer
 
-CALIBRACION YA APLICADA POR DEFECTO:
-  - Offsets de hard-iron del magnetometro: mag_offset_x=-1.95,
-    mag_offset_y=6.90, mag_offset_z=-8.325 (obtenidos con calibrate_mag.py).
-  - Signo de az invertido (az_fix = -az): en este montaje fisico boca-arriba
-    y en reposo el eje Z crudo da ~-9.8 m/s^2 en vez de +9.8.
-  Todos son parametros ROS2 y se pueden sobreescribir desde el launch.
+DEFAULT CALIBRATION APPLIED:
+  - Magnetometer hard-iron offsets: mag_offset_x=-1.95,
+    mag_offset_y=6.90, mag_offset_z=-8.325 (obtained with calibrate_mag.py).
+  - Inverted az sign (az_fix = -az): in this physical face-up mounting
+    at rest, raw Z reads ~ -9.8 m/s^2 instead of +9.8.
+  All are ROS 2 parameters and can be overridden via launch or CLI.
 
-Parametros ROS2:
+ROS 2 Parameters:
   port          (string, default '/dev/ttyACM0')
   baud          (int,    default 115200)
   mag_offset_x  (double, default -1.95)
   mag_offset_y  (double, default 6.90)
   mag_offset_z  (double, default -8.325)
 
-Requiere:
+Requirements:
     pip3 install pyserial --break-system-packages
 """
 
@@ -38,16 +38,15 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, MagneticField
 
-# --- Calibracion de magnetometro (hard-iron), obtenida el 2026-08-29 ---
+# --- Magnetometer hard-iron calibration (obtained 2026-08-29) ---
 DEFAULT_MAG_OFFSET_X = -1.950000
 DEFAULT_MAG_OFFSET_Y = 6.900000
 DEFAULT_MAG_OFFSET_Z = -8.325000
 
-# El magnetometro de esta IMU entrega datos en unidades relativas (gauss
-# aproximado / counts, segun firmware). sensor_msgs/MagneticField espera
-# Tesla. Para la fusion de Madgwick basta con que sea proporcional, ya
-# que el filtro normaliza el vector internamente.
-MAG_TO_TESLA = 1e-4  # asume entrada aproximada en Gauss -> Tesla
+# The magnetometer outputs relative units (approx Gauss / counts depending on firmware).
+# sensor_msgs/MagneticField expects Tesla. For Madgwick fusion, proportional scaling
+# is sufficient as the filter normalizes the vector internally.
+MAG_TO_TESLA = 1e-4  # approx Gauss -> Tesla conversion
 
 
 def parse_line(line):
@@ -76,18 +75,18 @@ class ImuDriverNode(Node):
         self.oy = self.get_parameter("mag_offset_y").value
         self.oz = self.get_parameter("mag_offset_z").value
         self.get_logger().info(
-            f"Offsets de magnetometro: x={self.ox}, y={self.oy}, z={self.oz}"
+            f"Magnetometer offsets: x={self.ox}, y={self.oy}, z={self.oz}"
         )
 
         self.imu_pub = self.create_publisher(Imu, "imu/data_raw", 10)
         self.mag_pub = self.create_publisher(MagneticField, "imu/mag", 10)
 
-        self.get_logger().info(f"Abriendo puerto serie {port} @ {baud}...")
+        self.get_logger().info(f"Opening serial port {port} @ {baud}...")
         self.ser = serial.Serial(port, baud, timeout=1)
         time.sleep(2)
         self.ser.reset_input_buffer()
 
-        # Timer rapido: en cada tick intenta leer y procesar una linea
+        # Fast polling timer: read and process one line per tick
         self.timer = self.create_timer(0.005, self.tick)
 
     def tick(self):
@@ -100,17 +99,15 @@ class ImuDriverNode(Node):
 
         _t_ms, ax, ay, az, gx, gy, gz, mx, my, mz = parsed
 
-        # Correccion de signo de Z: en este montaje fisico, boca-arriba
-        # y en reposo el eje Z crudo da ~-1g en vez de +1g.
+        # Z-axis sign correction: in this face-up physical mounting at rest,
+        # raw Z reads ~ -1g instead of +1g.
         az = -az
 
-        # Correccion de quiralidad del giroscopio: yaw y pitch salian
-        # invertidos (giran en sentido contrario al movimiento real)
-        # mientras que roll estaba correcto. Esto es tipico cuando el
-        # giroscopio entrega los ejes en convencion left-hand en vez
-        # de la right-hand que espera Madgwick (world_frame=enu).
-        # Se invierten gy y gz (no gx, que corresponde a roll y ya
-        # estaba bien) para corregir el sentido de rotacion.
+        # Gyroscope chirality correction: yaw and pitch were inverted
+        # (rotating opposite to real motion) while roll was correct.
+        # This occurs when gyro axes follow left-hand convention instead of
+        # the right-hand ENU convention expected by Madgwick.
+        # Invert gy and gz to correct rotation directions.
         gy = -gy
         gz = -gz
 
@@ -120,27 +117,27 @@ class ImuDriverNode(Node):
 
         now = self.get_clock().now().to_msg()
 
-        # --- Publicar sensor_msgs/Imu crudo (sin orientacion) ---
+        # --- Publish raw sensor_msgs/Imu (orientation uncalculated) ---
         msg = Imu()
         msg.header.stamp = now
         msg.header.frame_id = "imu_link"
 
-        # orientation desconocida: covarianza[0] = -1 le dice a los
-        # consumidores (como imu_filter_madgwick) que la ignoren.
+        # Unknown orientation: covariance[0] = -1 instructs consumers
+        # (e.g., imu_filter_madgwick) to ignore the orientation field.
         msg.orientation_covariance[0] = -1.0
 
         msg.angular_velocity.x = math.radians(gx)
         msg.angular_velocity.y = math.radians(gy)
         msg.angular_velocity.z = math.radians(gz)
 
-        # accel cruda viene en 'g'; sensor_msgs/Imu espera m/s^2
+        # Raw accel is in 'g'; sensor_msgs/Imu expects m/s^2
         msg.linear_acceleration.x = ax * 9.80665
         msg.linear_acceleration.y = ay * 9.80665
         msg.linear_acceleration.z = az * 9.80665
 
         self.imu_pub.publish(msg)
 
-        # --- Publicar sensor_msgs/MagneticField ---
+        # --- Publish sensor_msgs/MagneticField ---
         mag_msg = MagneticField()
         mag_msg.header.stamp = now
         mag_msg.header.frame_id = "imu_link"

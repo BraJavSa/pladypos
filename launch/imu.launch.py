@@ -6,7 +6,7 @@ from launch.actions import RegisterEventHandler
 from launch.event_handlers import OnProcessStart
 from launch_ros.actions import Node
 
-# Puerto fijo de la IMU (no se expone como argumento de launch)
+# Fixed IMU serial port configuration
 IMU_PORT = '/dev/ttyACM0'
 IMU_BAUD = 115200
 
