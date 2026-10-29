@@ -45,6 +45,12 @@ def generate_launch_description():
         description='Launch joy_node locally on the USV (set to true if joystick is connected directly to the USV)'
     )
 
+    publish_tf_arg = DeclareLaunchArgument(
+        'publish_tf',
+        default_value='true',
+        description='Broadcast odom -> imu_link TF transform for direct RViz visualization'
+    )
+
     # 1. Serial Bridge to Arduino Micro (Spektrum RC Radio, motor PWM output, and feedback)
     serial_bridge_node = Node(
         package='pladypos',
@@ -112,6 +118,16 @@ def generate_launch_description():
         ]
     )
 
+    # 6. TF Broadcaster for RViz2 (broadcasts odom -> imu_link relative to initial startup pose)
+    imu_tf_node = Node(
+        package='pladypos',
+        executable='imu_tf.py',
+        name='imu_tf_broadcaster',
+        namespace=ns,
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('publish_tf'))
+    )
+
     # Start Madgwick filter once the IMU driver process starts
     filter_start_event = RegisterEventHandler(
         OnProcessStart(
@@ -125,9 +141,11 @@ def generate_launch_description():
         port_imu_arg,
         port_arduino_arg,
         use_joy_arg,
+        publish_tf_arg,
         serial_bridge_node,
         teleop_mixer_node,
         joy_node,
         imu_driver_node,
+        imu_tf_node,
         filter_start_event
     ])

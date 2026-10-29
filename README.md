@@ -25,6 +25,10 @@ sudo apt install -y python3-opencv python3-yaml python3-numpy python3-serial \
   ros-jazzy-joy ros-jazzy-tf2-ros
 ```
 
+> [!TIP]
+> **Onboard USV Installation without Direct Internet:**
+> If the USV onboard computer cannot access the Internet directly on the vehicle's local network, refer to [usv_ssh_proxy.md](file:///home/brayan/ros2_ws/src/pladypos/src/python_nodes/extras/usv_ssh_proxy.md) to route `apt update`, `apt install`, and `git pull` through an SSH SOCKS5 reverse proxy tunnel (`socks5h://127.0.0.1:8888`).
+
 ---
 
 ## 2. Microcontroller & IMU Firmware Setup (Ubuntu Server 24.04)
@@ -140,6 +144,9 @@ ros2 launch pladypos core.launch.py use_joy:=true
    ```bash
    ros2 launch pladypos gcs.launch.py
    ```
+   > [!IMPORTANT]
+   > **Overhead Cameras Prerequisite (`ssh rawfie`):**
+   > Before launching visual localization, the pool overhead cameras must be activated via SSH on the camera master server (`ssh rawfie`). Your PC must have an authorized SSH access key or you must consult the password. See [usv_ssh_proxy.md](file:///home/brayan/ros2_ws/src/pladypos/src/python_nodes/extras/usv_ssh_proxy.md) for details.
 
 ---
 
@@ -153,16 +160,16 @@ ros2 run pladypos motor_mapper.py
 This utility will pulse each motor at 30% thrust for 4 seconds, prompt you to select its physical location, and dynamically save the configuration to `config/motor_mapping.yaml`. The mixer node (`teleop_mixer.py`) automatically loads this file at startup.
 
 ### 4.2 IMU RViz2 Real-Time Visualization
-To visualize the real-time attitude of the IMU in RViz2:
-1. Run the IMU launch on the USV:
+The onboard launch files (`core.launch.py` and `imu.launch.py`) automatically broadcast the zero-referenced TF transform (`odom -> imu_link`) out of the box:
+1. Run the USV launch on the boat:
    ```bash
-   ros2 launch pladypos imu.launch.py
+   ros2 launch pladypos core.launch.py
    ```
-2. In another terminal, broadcast the initial zero-referenced transform (`odom -> imu_link`):
+2. Open `rviz2` on your GCS:
    ```bash
-   python3 src/pladypos/src/python_nodes/extras/imu_tf.py --ros-args -r __ns:=/usv5
+   rviz2
    ```
-3. Open `rviz2`, set the **Fixed Frame** to `odom`, and add a **TF** or **Axes** display referenced to `imu_link`.
+3. Set the **Fixed Frame** to `odom`, and add a **TF** or **Axes** display (Reference Frame: `imu_link`). You will see the vehicle's attitude rotating smoothly in real time.
 
 ### 4.3 Magnetometer Hard-Iron Calibration
 If the magnetic environment changes or the sensor is remounted, run the 40-second calibration routine while drawing figure-8 patterns in the air:

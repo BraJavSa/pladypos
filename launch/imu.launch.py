@@ -2,8 +2,10 @@ import os
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessStart
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 # Fixed IMU serial port configuration
@@ -23,6 +25,12 @@ def generate_launch_description():
         pass
 
     ns = f"usv{usv_id}"
+
+    publish_tf_arg = DeclareLaunchArgument(
+        'publish_tf',
+        default_value='true',
+        description='Broadcast odom -> imu_link TF transform for direct RViz visualization'
+    )
 
     imu_driver_node = Node(
         package='pladypos',
@@ -57,6 +65,15 @@ def generate_launch_description():
         ]
     )
 
+    imu_tf_node = Node(
+        package='pladypos',
+        executable='imu_tf.py',
+        name='imu_tf_broadcaster',
+        namespace=ns,
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('publish_tf'))
+    )
+
     filter_start_event = RegisterEventHandler(
         OnProcessStart(
             target_action=imu_driver_node,
@@ -65,6 +82,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        publish_tf_arg,
         imu_driver_node,
+        imu_tf_node,
         filter_start_event
     ])

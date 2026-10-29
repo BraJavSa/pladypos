@@ -7,12 +7,9 @@ This node does NOT hardcode the namespace: it subscribes to "imu/data" relativel
 If launched within the usv5 namespace (via launch or with --ros-args -r __ns:=/usv5),
 it automatically listens to /usv5/imu/data.
 
-Standalone manual usage (specifying namespace):
-    source /opt/ros/jazzy/setup.bash
-    python3 imu_tf.py --ros-args -r __ns:=/usv5
-
-Usage within launch files (recommended):
-    Node(package='pladypos', executable='imu_tf.py', namespace=ns, ...)
+Parameters:
+    frame_id        (string, default 'odom')
+    child_frame_id  (string, default 'imu_link')
 """
 
 import rclpy
@@ -43,6 +40,12 @@ class ImuTfNode(Node):
     def __init__(self):
         super().__init__("imu_tf_broadcaster")
 
+        self.declare_parameter("frame_id", "odom")
+        self.declare_parameter("child_frame_id", "imu_link")
+
+        self.frame_id = self.get_parameter("frame_id").value
+        self.child_frame_id = self.get_parameter("child_frame_id").value
+
         self.tf_broadcaster = TransformBroadcaster(self)
         self.q0_inv = None  # inverse of initial orientation (zero reference pose)
 
@@ -69,8 +72,8 @@ class ImuTfNode(Node):
 
         t = TransformStamped()
         t.header.stamp = msg.header.stamp
-        t.header.frame_id = "odom"
-        t.child_frame_id = "imu_link"
+        t.header.frame_id = self.frame_id
+        t.child_frame_id = self.child_frame_id
         t.transform.translation.x = 0.0
         t.transform.translation.y = 0.0
         t.transform.translation.z = 0.0
