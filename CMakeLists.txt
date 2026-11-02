@@ -9,14 +9,11 @@ find_package(sensor_msgs REQUIRED)
 ament_python_install_package(${PROJECT_NAME})
 
 install(PROGRAMS
-  src/python_nodes/imu_driver.py
+  src/python_nodes/driver_imu.py
   src/python_nodes/serial_bridge.py
   src/python_nodes/teleop_mixer.py
-  src/python_nodes/motor_mapper.py
-  src/python_nodes/visual_imu_fusion.py
   src/python_nodes/visual_tag_estimator.py
-  src/python_nodes/driver_imu.py
-  src/python_nodes/imu_tf.py
+  src/python_nodes/visual_imu_fusion.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

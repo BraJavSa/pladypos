@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""
+visual_tag_estimator.py
+Node 2 of localization pipeline:
+Processes overhead camera stream, detects AprilTag 285, and publishes
+the visual 3D position (x, y, z) and visual orientation (qw, qx, qy, qz)
+on /usv5/visual_odom.
+"""
 
 import json
 import math
@@ -12,6 +19,7 @@ import numpy as np
 
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import ExternalShutdownException
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool
 from geometry_msgs.msg import TransformStamped
@@ -21,7 +29,7 @@ DEFAULT_STREAM_URL         = "http://10.250.253.1:8083/stream?topic=/camera_0354
 DEFAULT_CALIB_URL          = "http://10.250.253.1:8083/calibration?camera=0354"
 DEFAULT_TAG_ID             = 285
 DEFAULT_TAG_SIZE           = 0.25
-DEFAULT_ODOM_TOPIC         = "/usv5/odom"
+DEFAULT_ODOM_TOPIC         = "/usv5/visual_odom"
 DEFAULT_TAG_DETECTED_TOPIC = "/usv5/tag_detected"
 DEFAULT_CAMERA_FRAME       = "camera"
 DEFAULT_USV_FRAME          = "usv5"
@@ -34,23 +42,29 @@ DEFAULT_CY = 1033.4869
 
 
 def fetch_calibration(calib_url: str):
+    """Fetches intrinsic camera matrix and distortion coefficients from calibration endpoint."""
+    fx, fy, cx, cy = DEFAULT_FX, DEFAULT_FY, DEFAULT_CX, DEFAULT_CY
+    dist = np.zeros((5, 1), dtype=np.float64)
     try:
         with urllib.request.urlopen(calib_url, timeout=3) as r:
             data = json.load(r)
         m = data["camera_matrix"]["data"]
         fx, cx = float(m[0]), float(m[2])
         fy, cy = float(m[4]), float(m[5])
+        if "distortion_coefficients" in data and "data" in data["distortion_coefficients"]:
+            d = data["distortion_coefficients"]["data"]
+            dist = np.array(d, dtype=np.float64).reshape(-1, 1)
     except Exception:
-        fx, fy, cx, cy = DEFAULT_FX, DEFAULT_FY, DEFAULT_CX, DEFAULT_CY
+        pass
 
     K = np.array([[fx, 0, cx],
                   [0, fy, cy],
                   [0,  0,  1]], dtype=np.float64)
-    dist = np.zeros((5, 1), dtype=np.float64)
     return K, dist
 
 
 class MJPEGReader:
+    """Non-blocking background reader for HTTP MJPEG stream."""
     def __init__(self, url: str):
         self._url = url
         self._frame = None
@@ -101,6 +115,7 @@ class MJPEGReader:
 
 
 def build_detector():
+    """Initializes OpenCV ArUco detector for AprilTag36h11."""
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
     try:
         params = cv2.aruco.DetectorParameters()
@@ -112,6 +127,7 @@ def build_detector():
 
 
 def detect_tag(detector_info, gray, target_id: int):
+    """Detects specified AprilTag ID in grayscale image."""
     det, params = detector_info
     if params is None:
         corners, ids, _ = det.detectMarkers(gray)
@@ -126,6 +142,7 @@ def detect_tag(detector_info, gray, target_id: int):
 
 
 def rotation_matrix_to_quaternion(R: np.ndarray):
+    """Converts 3x3 rotation matrix to unit quaternion (qw, qx, qy, qz)."""
     tr = np.trace(R)
     if tr > 0:
         S = math.sqrt(tr + 1.0) * 2
@@ -159,6 +176,10 @@ def rotation_matrix_to_quaternion(R: np.ndarray):
 
 
 def estimate_pose(corners_px: np.ndarray, tag_size: float, K: np.ndarray, dist: np.ndarray):
+    """
+    Computes visual 3D position (x, y, z) and visual quaternion (qw, qx, qy, qz)
+    from 2D image corners using IPPE.
+    """
     half = tag_size / 2.0
     obj_pts = np.array([
         [-half,  half, 0.0],
@@ -168,11 +189,31 @@ def estimate_pose(corners_px: np.ndarray, tag_size: float, K: np.ndarray, dist: 
     ], dtype=np.float64)
 
     try:
-        ok, rvec, tvec = cv2.solvePnP(
+        retval, rvecs, tvecs, _ = cv2.solvePnPGeneric(
             obj_pts, corners_px.astype(np.float64),
-            K, dist, flags=cv2.SOLVEPNP_IPPE_SQUARE)
-        if not ok:
-            return None
+            K, dist, flags=cv2.SOLVEPNP_IPPE_SQUARE
+        )
+        if not retval or len(rvecs) == 0:
+            ok, rvec, tvec = cv2.solvePnP(
+                obj_pts, corners_px.astype(np.float64),
+                K, dist, flags=cv2.SOLVEPNP_IPPE_SQUARE
+            )
+            if not ok:
+                return None
+            rvecs, tvecs = [rvec], [tvec]
+
+        # Prefer face-up candidate (R[2,2] < 0 in downward camera optical frame)
+        best_idx = 0
+        best_vz = 1.0
+        for i, rv in enumerate(rvecs):
+            R_cand, _ = cv2.Rodrigues(rv)
+            vz = R_cand[2, 2]
+            if vz < best_vz:
+                best_vz = vz
+                best_idx = i
+
+        rvec = rvecs[best_idx]
+        tvec = tvecs[best_idx]
 
         x = float(tvec.flat[0])
         y = float(tvec.flat[1])
@@ -181,13 +222,7 @@ def estimate_pose(corners_px: np.ndarray, tag_size: float, K: np.ndarray, dist: 
         R, _ = cv2.Rodrigues(rvec)
         qw, qx, qy, qz = rotation_matrix_to_quaternion(R)
 
-        max_tilt_rad = math.radians(15.0)
-        cos_max_tilt = math.cos(max_tilt_rad)
-
-        vz = R[2, 2]
-        tilt_valid = bool(vz <= -cos_max_tilt)
-
-        return x, y, z, qw, qx, qy, qz, tilt_valid
+        return x, y, z, qw, qx, qy, qz
     except Exception:
         return None
 
@@ -273,7 +308,7 @@ class VisualTagEstimatorNode(Node):
         self.declare_parameter("tag_detected_topic", DEFAULT_TAG_DETECTED_TOPIC)
         self.declare_parameter("camera_frame_id", DEFAULT_CAMERA_FRAME)
         self.declare_parameter("usv_frame_id", DEFAULT_USV_FRAME)
-        self.declare_parameter("publish_tf", True)
+        self.declare_parameter("publish_tf", False)
         self.declare_parameter("publish_rate", DEFAULT_RATE_HZ)
         self.declare_parameter("use_filter", True)
         self.declare_parameter("window_size", 6)
@@ -310,9 +345,17 @@ class VisualTagEstimatorNode(Node):
         self.ab_x = AlphaBeta1D(alpha=self.ab_alpha, beta=self.ab_beta)
         self.ab_y = AlphaBeta1D(alpha=self.ab_alpha, beta=self.ab_beta)
         self._last_detection_time = None
-        self._last_valid_orientation = None
         self._prev_x = 0.0
         self._prev_y = 0.0
+
+        self.get_logger().info(
+            f"VisualTagEstimatorNode (Node 2) initialized:\n"
+            f"  Stream URL: {self.stream_url}\n"
+            f"  Tag ID: {self.tag_id} ({self.tag_size} m)\n"
+            f"  Visual Odometry Published: {self.odom_topic}\n"
+            f"  Tag Detection Topic: {self.tag_detected_topic}\n"
+            f"  Publish TF: {self.publish_tf}"
+        )
 
     def start(self):
         self._reader.start()
@@ -337,21 +380,15 @@ class VisualTagEstimatorNode(Node):
             if res is None:
                 continue
 
-            x, y, z, qw, qx, qy, qz, tilt_valid = res
+            x, y, z, qw, qx, qy, qz = res
             z = 5.1
             now_sec = time.time()
-
-            if tilt_valid:
-                self._last_valid_orientation = (qw, qx, qy, qz)
-            elif self._last_valid_orientation is not None:
-                qw, qx, qy, qz = self._last_valid_orientation
 
             if self.use_filter:
                 if self._last_detection_time is None or (now_sec - self._last_detection_time) > 0.5:
                     self.ma_filter.reset()
                     self.ab_x.reset()
                     self.ab_y.reset()
-                    self._last_valid_orientation = None
                     dt = 0.1
                 else:
                     dt = max(0.001, now_sec - self._last_detection_time)
@@ -372,6 +409,7 @@ class VisualTagEstimatorNode(Node):
 
             vz = 0.0
             self._last_detection_time = now_sec
+
             self._publish_data(x_filt, y_filt, z, qw, qx, qy, qz, vx, vy, vz)
 
     def _publish_tf(self, stamp, x: float, y: float, z: float, qw: float, qx: float, qy: float, qz: float):
@@ -423,7 +461,8 @@ class VisualTagEstimatorNode(Node):
         tag_detected_msg.data = True
         self._pub_tag_detected.publish(tag_detected_msg)
 
-        self._publish_tf(stamp, x, y, z, qw, qx, qy, qz)
+        if self.publish_tf:
+            self._publish_tf(stamp, x, y, z, qw, qx, qy, qz)
 
 
 def main(args=None):
@@ -432,7 +471,7 @@ def main(args=None):
     node.start()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.stop()
