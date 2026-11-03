@@ -47,9 +47,19 @@ if [ -z "${ZENOH_BIN}" ]; then
     exit 1
 fi
 
-CONFIG_FILE="${PKG_ROOT}/config/zenoh_config.json5"
+CONFIG_FILE=""
+if [ -f "${PKG_ROOT}/config/zenoh_config.json5" ]; then
+    CONFIG_FILE="${PKG_ROOT}/config/zenoh_config.json5"
+elif [ -f "${SCRIPT_DIR}/../../share/pladypos/config/zenoh_config.json5" ]; then
+    CONFIG_FILE="${SCRIPT_DIR}/../../share/pladypos/config/zenoh_config.json5"
+elif [ -f "${PKG_ROOT}/share/pladypos/config/zenoh_config.json5" ]; then
+    CONFIG_FILE="${PKG_ROOT}/share/pladypos/config/zenoh_config.json5"
+elif [ -f "${SCRIPT_DIR}/../config/zenoh_config.json5" ]; then
+    CONFIG_FILE="${SCRIPT_DIR}/../config/zenoh_config.json5"
+fi
+
 CFG_ARG=""
-if [ -f "${CONFIG_FILE}" ]; then
+if [ -n "${CONFIG_FILE}" ]; then
     CFG_ARG="-c ${CONFIG_FILE}"
 fi
 
