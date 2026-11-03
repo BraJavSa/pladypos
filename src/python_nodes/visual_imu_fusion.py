@@ -8,8 +8,12 @@ Validates camera visual odometry (/usv5/visual_odom) using the onboard IMU (/usv
 - The IMU is used ONLY as an approximate reference / sanity check:
   * Discards visual measurements where the Z axis is inverted (pointing into pool).
   * Discards visual measurements where orientation differs drastically from IMU (> 45 deg).
-- When validated, publishes /usv5/odom with the POSITION and ORIENTATION from the CAMERA.
-- Tracks slow IMU drift adaptively so genuine visual measurements are never rejected due to drift.
+- When validated:
+  * Transforms the position and orientation into the static pool surface frame (odom)
+    located at the center of the pool camera image at water level (Z = 5.1m below camera),
+    where +Z points UP (matching the IMU world Z and gravity convention).
+  * Publishes /usv5/odom relative to 'odom' (pool center).
+  * Broadcasts the dynamic TF: odom -> usv5.
 """
 
 import math
@@ -43,6 +47,46 @@ def quaternion_to_yaw_imu(qw: float, qx: float, qy: float, qz: float) -> float:
     return math.atan2(siny_cosp, cosy_cosp)
 
 
+def transform_cam_pose_to_pool(x_c: float, y_c: float, z_c: float,
+                               qw_c: float, qx_c: float, qy_c: float, qz_c: float,
+                               water_depth: float = 5.1):
+    """
+    Transforms pose from camera optical frame (X right, Y down, Z forward down)
+    to static pool surface frame 'odom' (X right, Y forward/up, Z up):
+    Static transform: camera -> odom is T=(0, 0, water_depth), R=Rx(pi).
+    So:
+      x_odom = x_c
+      y_odom = -y_c
+      z_odom = -(z_c - water_depth)  (~0.0 on water surface)
+      q_odom = q_x_pi * q_cam = (-qx_c, qw_c, -qz_c, qy_c) in (x,y,z,w)
+    """
+    x_o = x_c
+    y_o = -y_c
+    z_o = -(z_c - water_depth)
+
+    # Quaternion multiplication: q_p_c * q_cam_tag where q_p_c has Rx(pi) -> (x=1, y=0, z=0, w=0)
+    # Using (x, y, z, w):
+    # w_o = -x_c_quat
+    # x_o = w_c_quat
+    # y_o = -z_c_quat
+    # z_o = y_c_quat
+    x_q = qw_c
+    y_q = -qz_c
+    z_q = qy_c
+    w_q = -qx_c
+
+    norm = math.sqrt(x_q*x_q + y_q*y_q + z_q*z_q + w_q*w_q)
+    if norm > 1e-12:
+        x_q /= norm
+        y_q /= norm
+        z_q /= norm
+        w_q /= norm
+    else:
+        w_q, x_q, y_q, z_q = 1.0, 0.0, 0.0, 0.0
+
+    return x_o, y_o, z_o, w_q, x_q, y_q, z_q
+
+
 class VisualImuFusionNode(Node):
     def __init__(self):
         super().__init__('visual_imu_fusion')
@@ -50,10 +94,11 @@ class VisualImuFusionNode(Node):
         self.declare_parameter('visual_odom_topic', '/usv5/visual_odom')
         self.declare_parameter('imu_topic', '/usv5/imu/data')
         self.declare_parameter('odom_topic', '/usv5/odom')
-        self.declare_parameter('frame_id', 'camera')
+        self.declare_parameter('frame_id', 'odom')
         self.declare_parameter('child_frame_id', 'usv5')
+        self.declare_parameter('water_depth', 5.1)
         self.declare_parameter('publish_rate', 20.0)
-        self.declare_parameter('publish_tf', False)
+        self.declare_parameter('publish_tf', True)
         self.declare_parameter('max_yaw_diff_deg', 45.0)
         self.declare_parameter('pos_timeout_sec', 1.0)
 
@@ -62,6 +107,7 @@ class VisualImuFusionNode(Node):
         self.odom_topic = self.get_parameter('odom_topic').value
         self.frame_id = self.get_parameter('frame_id').value
         self.child_frame_id = self.get_parameter('child_frame_id').value
+        self.water_depth = float(self.get_parameter('water_depth').value)
         self.rate = float(self.get_parameter('publish_rate').value)
         self.publish_tf = bool(self.get_parameter('publish_tf').value)
         self.max_yaw_diff_rad = math.radians(float(self.get_parameter('max_yaw_diff_deg').value))
@@ -73,9 +119,9 @@ class VisualImuFusionNode(Node):
         self.create_subscription(Odometry, self.visual_odom_topic, self.visual_odom_cb, 10)
         self.create_subscription(Imu, self.imu_topic, self.imu_cb, 10)
 
-        # Validated camera pose (ground truth)
+        # Validated pose in 'odom' frame (Z up)
         self.latest_pos = None     # (x, y, z, timestamp)
-        self.latest_ori = None     # (qw, qx, qy, qz) from camera
+        self.latest_ori = None     # (qw, qx, qy, qz)
         self.prev_pos = None
         self.vx = 0.0
         self.vy = 0.0
@@ -92,11 +138,11 @@ class VisualImuFusionNode(Node):
 
         self.get_logger().info(
             f"VisualImuFusionNode (Node 3) initialized:\n"
-            f"  Visual Odometry Input (Camera): {self.visual_odom_topic}\n"
-            f"  IMU Reference Input (Sanity Check): {self.imu_topic}\n"
-            f"  Validated Odometry Published (Camera Pose): {self.odom_topic}\n"
-            f"  Max Yaw Discrepancy: {math.degrees(self.max_yaw_diff_rad):.1f} deg\n"
-            f"  Publish TF: {self.publish_tf}"
+            f"  Visual Odometry Input: {self.visual_odom_topic}\n"
+            f"  IMU Reference Input: {self.imu_topic}\n"
+            f"  Validated Odometry Output: {self.odom_topic} (frame: {self.frame_id} -> {self.child_frame_id})\n"
+            f"  Pool Center Depth (Z): {self.water_depth} m\n"
+            f"  Broadcast TF ({self.frame_id} -> {self.child_frame_id}): {self.publish_tf}"
         )
 
     def imu_cb(self, msg: Imu):
@@ -113,13 +159,13 @@ class VisualImuFusionNode(Node):
     def visual_odom_cb(self, msg: Odometry):
         """
         Validates camera measurement against IMU.
-        If valid: stores camera position and camera orientation.
+        If valid: transforms pose into pool surface frame (odom) where Z is up.
         If invalid (Z inverted or yaw differs drastically): discards.
         """
         now_sec = time.time()
         ori_tag = msg.pose.pose.orientation
 
-        # 1. Gate A: Reject inverted Z (in camera frame, normal vz >= 0 points into pool)
+        # 1. Gate A: Reject inverted Z (in camera optical frame, normal vz >= 0 points down into pool)
         if not (ori_tag.w == 0.0 and ori_tag.x == 0.0 and ori_tag.y == 0.0 and ori_tag.z == 0.0):
             vz = 1.0 - 2.0 * (ori_tag.x ** 2 + ori_tag.y ** 2)
             if vz >= 0.0:
@@ -154,33 +200,37 @@ class VisualImuFusionNode(Node):
                             throttle_duration_sec=2.0
                         )
                         return
-                    # Slowly adapt offset to track slow IMU drift without letting sudden jumps pass
+                    # Slowly adapt offset to track slow IMU drift
                     self.yaw_offset = normalize_angle(self.yaw_offset + 0.02 * normalize_angle(diff - self.yaw_offset))
             else:
-                # If IMU is not running or lost: the Z face-up check above is the active validation
                 self.get_logger().info(
                     "IMU unavailable or lost: validating visual pose using Z face-up check only.",
                     throttle_duration_sec=5.0
                 )
 
-        # 3. Measurement validated: ACCEPT BOTH POSITION AND ORIENTATION FROM CAMERA
+        # 3. Measurement validated: Transform camera pose to pool surface frame 'odom' (Z points up)
         pos = msg.pose.pose.position
-        x, y, z = pos.x, pos.y, 5.1
+        x_c, y_c, z_c = pos.x, pos.y, self.water_depth
+        qw_c, qx_c, qy_c, qz_c = ori_tag.w, ori_tag.x, ori_tag.y, ori_tag.z
+
+        x_o, y_o, z_o, qw_o, qx_o, qy_o, qz_o = transform_cam_pose_to_pool(
+            x_c, y_c, z_c, qw_c, qx_c, qy_c, qz_c, self.water_depth
+        )
 
         if self.prev_pos is not None:
             px, py, pz, pt = self.prev_pos
             dt = now_sec - pt
             if dt > 0.001:
-                self.vx = (x - px) / dt
-                self.vy = (y - py) / dt
-                self.vz = (z - pz) / dt
+                self.vx = (x_o - px) / dt
+                self.vy = (y_o - py) / dt
+                self.vz = (z_o - pz) / dt
 
-        self.prev_pos = (x, y, z, now_sec)
-        self.latest_pos = (x, y, z, now_sec)
-        self.latest_ori = (ori_tag.w, ori_tag.x, ori_tag.y, ori_tag.z)
+        self.prev_pos = (x_o, y_o, z_o, now_sec)
+        self.latest_pos = (x_o, y_o, z_o, now_sec)
+        self.latest_ori = (qw_o, qx_o, qy_o, qz_o)
 
     def timer_callback(self):
-        """Publishes validated odometry (position and orientation taken directly from camera)."""
+        """Publishes validated odometry and TF in 'odom' frame (Z up)."""
         if self.latest_pos is None or self.latest_ori is None:
             return
 
@@ -199,12 +249,12 @@ class VisualImuFusionNode(Node):
         odom_msg.header.frame_id = self.frame_id
         odom_msg.child_frame_id = self.child_frame_id
 
-        # Position from camera
+        # Position in pool odom frame (Z = 0 at pool surface, +Z up)
         odom_msg.pose.pose.position.x = x
         odom_msg.pose.pose.position.y = y
         odom_msg.pose.pose.position.z = z
 
-        # Orientation from camera
+        # Orientation in pool odom frame (yaw around +Z up)
         odom_msg.pose.pose.orientation.w = qw
         odom_msg.pose.pose.orientation.x = qx
         odom_msg.pose.pose.orientation.y = qy
@@ -235,6 +285,7 @@ class VisualImuFusionNode(Node):
 
         self.odom_pub.publish(odom_msg)
 
+        # Broadcast dynamic transform odom -> usv5
         if self.publish_tf:
             tf_msg = TransformStamped()
             tf_msg.header.stamp = stamp

@@ -44,6 +44,12 @@ def generate_launch_description():
         description='AprilTag side length in meters'
     )
 
+    water_depth_arg = DeclareLaunchArgument(
+        'water_depth',
+        default_value='5.1',
+        description='Distance from overhead camera to pool water surface in meters'
+    )
+
     max_yaw_diff_arg = DeclareLaunchArgument(
         'max_yaw_diff_deg',
         default_value='45.0',
@@ -52,8 +58,8 @@ def generate_launch_description():
 
     publish_tf_arg = DeclareLaunchArgument(
         'publish_tf',
-        default_value='false',
-        description='Broadcast TF transforms (disabled by default until EKF)'
+        default_value='true',
+        description='Broadcast TF transforms (camera -> odom static, and odom -> usv5 dynamic)'
     )
 
     stream_url_expr = PythonExpression([
@@ -80,7 +86,29 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('use_joy'))
     )
 
-    # 2. Visual AprilTag Estimator Node (Node 2: camera -> visual position and orientation)
+    # 2. Static TF: camera (overhead) -> odom (pool surface center, Z points UP)
+    # Origin is at image center at water surface (Z = 5.1m down from camera).
+    # Rotated 180 deg around X (qx=1.0, qw=0.0) so that +Z points UP towards ceiling, matching IMU and ENU.
+    static_tf_camera_to_odom = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_tf_camera_to_odom',
+        output='screen',
+        arguments=[
+            '--x', '0.0',
+            '--y', '0.0',
+            '--z', LaunchConfiguration('water_depth'),
+            '--qx', '1.0',
+            '--qy', '0.0',
+            '--qz', '0.0',
+            '--qw', '0.0',
+            '--frame-id', 'camera',
+            '--child-frame-id', 'odom'
+        ],
+        condition=IfCondition(LaunchConfiguration('publish_tf'))
+    )
+
+    # 3. Visual AprilTag Estimator Node (Node 2: camera -> visual position and orientation)
     visual_tag_node = Node(
         package='pladypos',
         executable='visual_tag_estimator.py',
@@ -93,11 +121,11 @@ def generate_launch_description():
             'tag_size': LaunchConfiguration('tag_size'),
             'odom_topic': f'/{ns}/visual_odom',
             'tag_detected_topic': f'/{ns}/tag_detected',
-            'publish_tf': LaunchConfiguration('publish_tf'),
+            'publish_tf': False,
         }]
     )
 
-    # 3. Visual-IMU Comparison & Fusion Node (Node 3: compares orientations, discards bad ones, publishes /usv5/odom)
+    # 4. Visual-IMU Comparison & Fusion Node (Node 3: validates pose, transforms to odom frame, publishes TF odom -> usv5)
     visual_imu_node = Node(
         package='pladypos',
         executable='visual_imu_fusion.py',
@@ -107,6 +135,9 @@ def generate_launch_description():
             'visual_odom_topic': f'/{ns}/visual_odom',
             'imu_topic': f'/{ns}/imu/data',
             'odom_topic': f'/{ns}/odom',
+            'frame_id': 'odom',
+            'child_frame_id': f'{ns}',
+            'water_depth': LaunchConfiguration('water_depth'),
             'publish_tf': LaunchConfiguration('publish_tf'),
             'max_yaw_diff_deg': LaunchConfiguration('max_yaw_diff_deg'),
         }]
@@ -117,9 +148,11 @@ def generate_launch_description():
         use_joy_arg,
         tag_id_arg,
         tag_size_arg,
+        water_depth_arg,
         max_yaw_diff_arg,
         publish_tf_arg,
         joy_node,
+        static_tf_camera_to_odom,
         visual_tag_node,
         visual_imu_node,
     ])
