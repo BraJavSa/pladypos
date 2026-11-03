@@ -1,0 +1,6 @@
+{
+  timestamping: {
+    enabled: true,
+    drop_future_timestamp: false
+  }
+}

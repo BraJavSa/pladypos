@@ -34,55 +34,46 @@ sequenceDiagram
 
 ---
 
-## 🚀 Paso a Paso Detallado
+## 🚀 Paso a Paso (4 Terminales)
 
-### 🖥️ Terminal 1 (GCS Laptop) — Router Zenoh
-Abre una terminal en tu laptop:
+> **Nota:** Como el entorno ROS 2 ya está configurado en tu `~/.bashrc`, no necesitas hacer `source` manualmente.
+
+### 🖥️ Terminal 1 (GCS Laptop) — Iniciar Router Zenoh
 ```bash
-source ~/ros2_ws/install/setup.bash
 ros2 run pladypos start_zenoh_gcs.sh
 ```
-> **Nota:** Este script es portable, no depende de nombres de usuario hardcodeados y detecta automáticamente si el router ya estaba activo.
 
 ---
 
-### 🚢 Terminal 2 (GCS Laptop) — Túnel y Core del Barco
-Abre una segunda terminal en tu laptop para conectar con el barco pasando el puerto Zenoh por el túnel:
-```bash
-ssh -R 7447:localhost:7447 usv5
-```
-Una vez dentro del barco (`pladypos-usv5@pladypos-usv5`):
-```bash
-source /opt/ros/humble/setup.bash
-source ~/ros2usv_ws/install/setup.bash
-ros2 launch pladypos core.launch.py
-```
-*(Esto enciende los drivers de motores, el driver de la IMU a 100 Hz y el mezclador de teleoperación).*
+### 🚢 Terminal 2 (GCS Laptop -> Barco) — Túnel y Core del Barco
+1. Abre conexión con el barco reenviando el puerto Zenoh:
+   ```bash
+   ssh -R 7447:localhost:7447 usv5
+   ```
+2. Dentro del barco:
+   ```bash
+   ros2 launch pladypos core.launch.py
+   ```
 
 ---
 
-### 🔗 Terminal 3 (GCS Laptop) — Enlace Zenoh a Bordo
-Abre una tercera terminal en tu laptop:
-```bash
-ssh usv5
-```
-Una vez dentro del barco:
-```bash
-source /opt/ros/humble/setup.bash
-source ~/ros2usv_ws/install/setup.bash
-ros2 run pladypos start_zenoh_usv.sh
-```
-*(En este momento, la IMU a 100 Hz y los comandos del joystick quedan enlazados con tu laptop).*
+### 🔗 Terminal 3 (GCS Laptop -> Barco) — Enlace Zenoh a Bordo
+1. Abre otra conexión con el barco:
+   ```bash
+   ssh usv5
+   ```
+2. Dentro del barco:
+   ```bash
+   ros2 run pladypos start_zenoh_usv.sh
+   ```
 
 ---
 
-### 🎮 Terminal 4 (GCS Laptop) — Lanzamiento GCS (Cámara + Fusión + Joystick)
-Abre la cuarta terminal en tu laptop:
+### 🎮 Terminal 4 (GCS Laptop) — Lanzamiento GCS (Visión + Fusión + Joystick)
+En tu laptop:
 ```bash
-source ~/ros2_ws/install/setup.bash
 ros2 launch pladypos gcs.launch.py camera:=0354 tag_id:=285
 ```
-*(Inicia el nodo de joystick local, el detector visual rápido por ROI del AprilTag 285 y el estimador determinista 6-DOF a 30 Hz con Z=0 bloqueado).*
 
 ---
 

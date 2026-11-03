@@ -28,11 +28,24 @@ if [ -z "${ZENOH_BIN}" ]; then
     exit 1
 fi
 
+CONFIG_FILE="${PKG_ROOT}/config/zenoh_config.json5"
+CFG_ARG=""
+if [ -f "${CONFIG_FILE}" ]; then
+    CFG_ARG="-c ${CONFIG_FILE}"
+fi
+
 echo "=========================================================="
 echo " Starting USV Zenoh Bridge Client"
 echo " Binary: ${ZENOH_BIN}"
 echo " Connecting to: ${TARGET}"
+if [ -n "${CFG_ARG}" ]; then
+    echo " Config: ${CONFIG_FILE} (drop_future_timestamp: false)"
+fi
 echo " User: $(whoami) | Host: $(hostname)"
 echo "=========================================================="
 
-exec "${ZENOH_BIN}" client -e "${TARGET}"
+if [ -n "${CFG_ARG}" ]; then
+    exec "${ZENOH_BIN}" client -c "${CONFIG_FILE}" -e "${TARGET}"
+else
+    exec "${ZENOH_BIN}" client -e "${TARGET}"
+fi

@@ -47,11 +47,24 @@ if [ -z "${ZENOH_BIN}" ]; then
     exit 1
 fi
 
+CONFIG_FILE="${PKG_ROOT}/config/zenoh_config.json5"
+CFG_ARG=""
+if [ -f "${CONFIG_FILE}" ]; then
+    CFG_ARG="-c ${CONFIG_FILE}"
+fi
+
 echo "=========================================================="
 echo " Starting Zenoh Bridge GCS Router"
 echo " Binary: ${ZENOH_BIN}"
 echo " Listening on: tcp/0.0.0.0:${PORT}"
+if [ -n "${CFG_ARG}" ]; then
+    echo " Config: ${CONFIG_FILE} (drop_future_timestamp: false)"
+fi
 echo " User: $(whoami) | Host: $(hostname)"
 echo "=========================================================="
 
-exec "${ZENOH_BIN}" -l "tcp/0.0.0.0:${PORT}"
+if [ -n "${CFG_ARG}" ]; then
+    exec "${ZENOH_BIN}" -c "${CONFIG_FILE}" -l "tcp/0.0.0.0:${PORT}"
+else
+    exec "${ZENOH_BIN}" -l "tcp/0.0.0.0:${PORT}"
+fi
