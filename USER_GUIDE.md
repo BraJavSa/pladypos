@@ -71,11 +71,23 @@ ros2 run pladypos start_zenoh_gcs.sh
 
 ---
 
-### 🎮 Terminal 4 (GCS Laptop) — Lanzamiento GCS (Visión + Fusión + Joystick)
+### 🎮 Terminal 4 (GCS Laptop) — Lanzamiento GCS (Visión + Fusión + Joystick + Pileta)
 En tu laptop:
 ```bash
 ros2 launch pladypos gcs.launch.py camera:=0354 tag_id:=285
 ```
+*(Inicia el detector de AprilTag, la fusión 6-DOF, el joystick y publica los límites de la pileta para RViz).*
+
+---
+
+## 🗺️ Visualización de la Pileta y Barco en RViz
+Para ver el barco navegando dentro de los límites de la pileta en tiempo real:
+1. Abre RViz en tu laptop: `rviz2`
+2. En **Global Options** fija **Fixed Frame**: `odom`
+3. Dale a **Add -> By topic**:
+   - `/pool_boundary` $\rightarrow$ Tipo **Marker** (dibuja el perímetro de la pileta en color cian).
+   - `/tf` (muestra el frame `usv5_odom` moviéndose en tiempo real).
+   - `/usv5/odometry/filtered` $\rightarrow$ Tipo **Odometry** (flecha de orientación y trayectoria).
 
 ---
 

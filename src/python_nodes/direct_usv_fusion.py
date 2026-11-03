@@ -223,14 +223,6 @@ class DirectUsvFusion(Node):
         tf_msg.transform.rotation.z = qz
         self.tf_broadcaster.sendTransform(tf_msg)
 
-        # Also broadcast odom -> usv5 for compatibility
-        tf_usv5 = TransformStamped()
-        tf_usv5.header.stamp = stamp
-        tf_usv5.header.frame_id = self.frame_id
-        tf_usv5.child_frame_id = "usv5"
-        tf_usv5.transform = tf_msg.transform
-        self.tf_broadcaster.sendTransform(tf_usv5)
-
 
 def main(args=None):
     rclpy.init(args=args)

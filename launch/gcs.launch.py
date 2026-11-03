@@ -144,6 +144,18 @@ def generate_launch_description():
         }]
     )
 
+    # 5. Pool Boundary Visualizer Node (Publishes pool perimeter Marker in 'odom' frame for RViz)
+    pool_boundary_node = Node(
+        package='pladypos',
+        executable='pool_boundary_publisher.py',
+        name='pool_boundary_publisher',
+        output='screen',
+        parameters=[{
+            'frame_id': 'odom',
+            'marker_topic': '/pool_boundary'
+        }]
+    )
+
     return LaunchDescription([
         camera_arg,
         use_joy_arg,
@@ -156,4 +168,5 @@ def generate_launch_description():
         static_tf_camera_to_odom,
         visual_tag_node,
         direct_fusion_node,
+        pool_boundary_node,
     ])
