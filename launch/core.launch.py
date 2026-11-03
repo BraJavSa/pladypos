@@ -120,6 +120,20 @@ def generate_launch_description():
         )
     )
 
+    # 6. Network Bridge (Server on boat: relays IMU to GCS, receives Joy from GCS over TCP)
+    network_bridge_node = Node(
+        package='pladypos',
+        executable='network_bridge.py',
+        name='network_bridge',
+        output='screen',
+        parameters=[{
+            'mode': 'server',
+            'host': '0.0.0.0',
+            'port': 9876,
+            'usv_id': usv_id
+        }]
+    )
+
     return LaunchDescription([
         baud_arg,
         port_imu_arg,
@@ -129,5 +143,6 @@ def generate_launch_description():
         teleop_mixer_node,
         joy_node,
         imu_driver_node,
-        filter_start_event
+        filter_start_event,
+        network_bridge_node
     ])

@@ -14,6 +14,7 @@ install(PROGRAMS
   src/python_nodes/teleop_mixer.py
   src/python_nodes/visual_tag_estimator.py
   src/python_nodes/visual_imu_fusion.py
+  src/python_nodes/network_bridge.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

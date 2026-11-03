@@ -5,8 +5,8 @@
 - **Protocol:** HTTP MJPEG stream (ROS 2 `web_video_server`)
 - **Host:** `10.250.253.1`
 - **Port:** `8083`
-- **Stream URL:** `http://10.250.253.1:8083/stream?topic=/camera_0352/camera_0352/image_raw`
-- **Camera Calibration Endpoint:** `http://10.250.253.1:8083/calibration?camera=0352`
+- **Stream URL:** `http://10.250.253.1:8083/stream?topic=/camera_0354/camera_0354/image_raw`
+- **Camera Calibration Endpoint:** `http://10.250.253.1:8083/calibration?camera=0354`
   - Returns JSON containing `camera_matrix.data` (3x3 intrinsic matrix in flat format: fx, 0, cx, 0, fy, cy, 0, 0, 1), `width`, and `height`.
 
 ## Target Tag
