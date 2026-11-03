@@ -115,30 +115,71 @@ class MJPEGReader:
 
 
 def build_detector():
-    """Initializes OpenCV ArUco detector for AprilTag36h11."""
-    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
+    """Initializes high-performance pupil_apriltags Detector with fallback to OpenCV ArUco."""
     try:
-        params = cv2.aruco.DetectorParameters()
-        detector = cv2.aruco.ArucoDetector(aruco_dict, params)
-        return detector, None
-    except AttributeError:
+        from pupil_apriltags import Detector
+        detector = Detector(
+            families="tag36h11",
+            nthreads=4,
+            quad_decimate=1.0,
+            quad_sigma=0.0,
+            refine_edges=1,
+            decode_sharpening=0.25,
+            debug=0
+        )
+        return "pupil", detector
+    except ImportError:
+        aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
         params = cv2.aruco.DetectorParameters_create()
-        return aruco_dict, params
+        return "opencv", (aruco_dict, params)
 
 
-def detect_tag(detector_info, gray, target_id: int):
-    """Detects specified AprilTag ID in grayscale image."""
-    det, params = detector_info
-    if params is None:
-        corners, ids, _ = det.detectMarkers(gray)
+def detect_tag(detector_info, gray, target_id: int, roi_box=None):
+    """
+    Detects specified AprilTag ID in grayscale image.
+    If roi_box=(x_min, y_min, x_max, y_max) is provided, searches inside the cropped ROI,
+    offsetting resulting coordinates back to full image coordinate space.
+    Returns: (corners (4,2), center (2,)) or (None, None)
+    """
+    backend, det = detector_info
+    h_img, w_img = gray.shape[:2]
+
+    if roi_box is not None:
+        rx0, ry0, rx1, ry1 = roi_box
+        rx0 = max(0, min(w_img - 1, int(rx0)))
+        ry0 = max(0, min(h_img - 1, int(ry0)))
+        rx1 = max(rx0 + 10, min(w_img, int(rx1)))
+        ry1 = max(ry0 + 10, min(h_img, int(ry1)))
+        img_patch = gray[ry0:ry1, rx0:rx1]
+        offset_x, offset_y = rx0, ry0
     else:
-        corners, ids, _ = cv2.aruco.detectMarkers(gray, det, parameters=params)
-    if ids is None:
-        return None
-    for i, id_val in enumerate(ids.flatten()):
-        if int(id_val) == target_id:
-            return corners[i][0]
-    return None
+        img_patch = gray
+        offset_x, offset_y = 0, 0
+
+    if backend == "pupil":
+        tags = det.detect(img_patch)
+        for t in tags:
+            if int(t.tag_id) == target_id:
+                # pupil_apriltags returns corners ordered: [bottom-right, top-right, top-left, bottom-left]
+                # Map to OpenCV ArUco order [top-left, top-right, bottom-right, bottom-left]: [1, 0, 3, 2]
+                raw_corners = t.corners[[1, 0, 3, 2]].copy()
+                raw_corners[:, 0] += offset_x
+                raw_corners[:, 1] += offset_y
+                center = np.array([t.center[0] + offset_x, t.center[1] + offset_y], dtype=np.float64)
+                return raw_corners, center
+        return None, None
+    else:
+        aruco_dict, params = det
+        corners, ids, _ = cv2.aruco.detectMarkers(img_patch, aruco_dict, parameters=params)
+        if ids is not None:
+            for i, id_val in enumerate(ids.flatten()):
+                if int(id_val) == target_id:
+                    c = corners[i][0].copy()
+                    c[:, 0] += offset_x
+                    c[:, 1] += offset_y
+                    center = np.mean(c, axis=0)
+                    return c, center
+        return None, None
 
 
 def rotation_matrix_to_quaternion(R: np.ndarray):
@@ -348,13 +389,20 @@ class VisualTagEstimatorNode(Node):
         self._prev_x = 0.0
         self._prev_y = 0.0
 
+        # ROI Tracking State (bounding box crop around last known tag center)
+        self._last_tag_center = None
+        self._roi_half_size = 250  # 500x500 px window around tag center (tag ~55 px, boat moves smooth)
+        self._roi_consecutive_misses = 0
+        self._max_roi_misses = 3   # After 3 misses in ROI, fall back to full 2048x2048 frame search
+
         self.get_logger().info(
             f"VisualTagEstimatorNode (Node 2) initialized:\n"
             f"  Stream URL: {self.stream_url}\n"
             f"  Tag ID: {self.tag_id} ({self.tag_size} m)\n"
             f"  Visual Odometry Published: {self.odom_topic}\n"
             f"  Tag Detection Topic: {self.tag_detected_topic}\n"
-            f"  Publish TF: {self.publish_tf}"
+            f"  Publish TF: {self.publish_tf}\n"
+            f"  ROI Window: {self._roi_half_size * 2}x{self._roi_half_size * 2} px"
         )
 
     def start(self):
@@ -372,9 +420,32 @@ class VisualTagEstimatorNode(Node):
             if gray is None:
                 continue
 
-            corners = detect_tag(self._detector, gray, self.tag_id)
+            corners = None
+            center = None
+
+            # 1. Try fast ROI search if tag was recently detected
+            if self._last_tag_center is not None and self._roi_consecutive_misses < self._max_roi_misses:
+                cx, cy = self._last_tag_center
+                roi_box = (
+                    cx - self._roi_half_size,
+                    cy - self._roi_half_size,
+                    cx + self._roi_half_size,
+                    cy + self._roi_half_size
+                )
+                corners, center = detect_tag(self._detector, gray, self.tag_id, roi_box=roi_box)
+                if corners is None:
+                    self._roi_consecutive_misses += 1
+
+            # 2. Fall back to full frame if ROI not active or missed
+            if corners is None:
+                corners, center = detect_tag(self._detector, gray, self.tag_id, roi_box=None)
+
             if corners is None:
                 continue
+
+            # Detection success: update ROI tracking center and reset miss counter
+            self._last_tag_center = center
+            self._roi_consecutive_misses = 0
 
             res = estimate_pose(corners, self.tag_size, self._K, self._dist)
             if res is None:

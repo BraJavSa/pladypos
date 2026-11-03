@@ -2,6 +2,9 @@
 
 ROS 2 package for control, actuator mixing, sensor telemetry, and visual localization of the **PlaDyPos USV**, developed for **ROS 2 Jazzy** on **Ubuntu 24.04**.
 
+> 📖 **[Manual de Usuario y Protocolo de Inicio Rápido (USER_GUIDE.md)](USER_GUIDE.md)**  
+> 🔬 **[Reporte Técnico de Arquitectura y Base del Paper Científico (system_architecture_report.md)](src/python_nodes/system_architecture_report.md)**
+
 ---
 
 ## 1. System Requirements & Prerequisites

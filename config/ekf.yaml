@@ -1,51 +1,64 @@
 /**:
   ros__parameters:
     frequency: 30.0
-    two_d_mode: false
+    two_d_mode: false       # Mantiene Roll, Pitch y Yaw activos
     publish_tf: true
 
     odom_frame:      odom
-    base_link_frame: usv5
+    base_link_frame: usv5_odom
     world_frame:     odom
 
-    # ── Fuente primaria: Odometría AprilTag ────────────────────────────────────
+    # ── Sensor 1: Odometría de la Cámara (POSICIÓN + VELOCIDAD LINEAL) ────────
+    # Al pasarle Vx, Vy el EKF aprende la inercia/velocidad del barco.
+    # Cuando la cámara se pierde durante 1-2 segundos, el modelo de predicción
+    # continúa propagando la posición usando esta velocidad y el rumbo de la IMU
+    # en lugar de frenarse en seco y saltar.
+    # [X, Y, Z,
+    #  Roll, Pitch, Yaw,
+    #  Vx, Vy, Vz,
+    #  Vroll, Vpitch, Vyaw,
+    #  Ax, Ay, Az]
     odom0: /usv5/odom
-    odom0_config: [true,  true,  false,   # X, Y (posición absoluta)
-                   true,  true,  true,    # Roll, Pitch, Yaw (orientación absoluta 3D)
-                   false, false, false,
+    odom0_config: [true,  true,  false,   # X, Y (Posición absoluta de la piscina)
+                   false, false, true,    # Yaw (Corrige el drift del Yaw de la IMU)
+                   true,  true,  false,   # Vx, Vy (Velocidades lineales para mantener inercia)
                    false, false, false,
                    false, false, false]
     odom0_differential: false
     odom0_relative:     false
-    odom0_queue_size:   5
+    odom0_queue_size:   10
     odom0_pose_use_child_frame: false
 
-    # ── Fuente secundaria: IMU (opcional) ─────────────────────────────────────
+    # ── Sensor 2: IMU de 100 Hz (/usv5/imu/data) ──────────────────────────────
+    # - Roll y Pitch: Altamente confiables, calculados por gravedad en la IMU.
+    # - Yaw: Confiable a corto plazo con gyro Z, corregido por la cámara.
+    # - Gyro 3D (Vroll, Vpitch, Vyaw): Proporciona suavidad a 100 Hz en giros.
     imu0: /usv5/imu/data
     imu0_config: [false, false, false,
-                  false, false, true,    # Yaw de IMU
+                  true,  true,  true,     # Roll, Pitch y Yaw de la IMU
                   false, false, false,
-                  false, false, true,    # Gyro Z
+                  true,  true,  true,     # Vroll, Vpitch, Vyaw (Giroscopios 3D a 100 Hz)
                   false, false, false]
     imu0_differential: false
     imu0_relative:     false
-    imu0_queue_size:   10
+    imu0_queue_size:   30
     imu0_remove_gravitational_acceleration: true
 
     # ── Matriz de Ruido del Proceso (Process Noise Covariance Q) ───────────────
-    # Valores equilibrados (1e-2) para respuesta rápida sin retraso/lag
+    # Permite al modelo cinemático mantener la velocidad constante (dead-reckoning suave)
+    # durante los frames donde la cámara tarda en detectar.
     process_noise_covariance: [
-      1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # X
-      0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Y
+      5e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # X
+      0.0,  5e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Y
       0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Z
-      0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Roll
-      0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Pitch
+      0.0,  0.0,  0.0,  1e-3, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Roll
+      0.0,  0.0,  0.0,  0.0,  1e-3, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Pitch
       0.0,  0.0,  0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Yaw
-      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Vx
-      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Vy
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  2e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Vx
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  2e-2, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Vy
       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  # Vz
-      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  0.0,  # Vroll
-      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  0.0,  0.0,  # Vpitch
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-3, 0.0,  0.0,  0.0,  0.0,  0.0,  # Vroll
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-3, 0.0,  0.0,  0.0,  0.0,  # Vpitch
       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-2, 0.0,  0.0,  0.0,  # Vyaw
       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  0.0,  # Ax
       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-6, 0.0,  # Ay

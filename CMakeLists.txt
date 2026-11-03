@@ -14,12 +14,17 @@ install(PROGRAMS
   src/python_nodes/teleop_mixer.py
   src/python_nodes/visual_tag_estimator.py
   src/python_nodes/visual_imu_fusion.py
+  src/python_nodes/direct_usv_fusion.py
+  scripts/start_zenoh_gcs.sh
+  scripts/start_zenoh_usv.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY
   config
   launch
+  scripts
+  bin
   DESTINATION share/${PROJECT_NAME}
 )
 

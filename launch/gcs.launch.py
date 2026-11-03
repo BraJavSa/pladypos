@@ -125,21 +125,22 @@ def generate_launch_description():
         }]
     )
 
-    # 4. Visual-IMU Comparison & Fusion Node (Node 3: validates pose, transforms to odom frame, publishes TF odom -> usv5)
-    visual_imu_node = Node(
+    # 4. Direct USV Fusion Node (Deterministic 30 Hz fusion: perfect IMU Roll/Pitch, camera-corrected IMU Yaw, camera X/Y, Z=0)
+    # Publishes /usv5/odometry/filtered and broadcasts TF: odom -> usv5_odom (and odom -> usv5)
+    direct_fusion_node = Node(
         package='pladypos',
-        executable='visual_imu_fusion.py',
-        name='visual_imu_fusion',
+        executable='direct_usv_fusion.py',
+        name='direct_usv_fusion',
         output='screen',
         parameters=[{
             'visual_odom_topic': f'/{ns}/visual_odom',
             'imu_topic': f'/{ns}/imu/data',
-            'odom_topic': f'/{ns}/odom',
+            'odom_topic': f'/{ns}/odometry/filtered',
             'frame_id': 'odom',
-            'child_frame_id': f'{ns}',
+            'child_frame_id': f'{ns}_odom',
             'water_depth': LaunchConfiguration('water_depth'),
-            'publish_tf': LaunchConfiguration('publish_tf'),
-            'max_yaw_diff_deg': LaunchConfiguration('max_yaw_diff_deg'),
+            'alpha_pos': 0.35,
+            'yaw_corr_rate': 0.05
         }]
     )
 
@@ -154,5 +155,5 @@ def generate_launch_description():
         joy_node,
         static_tf_camera_to_odom,
         visual_tag_node,
-        visual_imu_node,
+        direct_fusion_node,
     ])

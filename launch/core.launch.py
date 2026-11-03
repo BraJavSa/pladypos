@@ -103,7 +103,8 @@ def generate_launch_description():
             'world_frame': 'enu',
             'use_magnetic_field_msg': True,
             'gain': 0.1,
-            'zeta': 0.0
+            'zeta': 0.0,
+            'orientation_stddev': 0.05
         }],
         remappings=[
             ('imu/data_raw', 'imu/data_raw'),
