@@ -37,6 +37,8 @@ sequenceDiagram
 ## 🚀 Paso a Paso (4 Terminales)
 
 > **Nota:** Como el entorno ROS 2 ya está configurado en tu `~/.bashrc`, no necesitas hacer `source` manualmente.
+> Si los relojes de la laptop y el barco se desfasan, puedes sincronizarlos automáticamente en 1 segundo con:
+> `ros2 run pladypos sync_boat_time.sh` (toma tu zona horaria y tu hora y se la pasa al barco).
 
 ### 🖥️ Terminal 1 (GCS Laptop) — Iniciar Router Zenoh
 ```bash

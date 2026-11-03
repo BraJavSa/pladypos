@@ -17,6 +17,7 @@ install(PROGRAMS
   src/python_nodes/direct_usv_fusion.py
   scripts/start_zenoh_gcs.sh
   scripts/start_zenoh_usv.sh
+  scripts/sync_boat_time.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
