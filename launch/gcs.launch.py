@@ -143,20 +143,6 @@ def generate_launch_description():
         }]
     )
 
-    # 5. Network Bridge (Client on GCS: connects to boat over TCP/SSH tunnel to receive IMU and send Joy)
-    network_bridge_node = Node(
-        package='pladypos',
-        executable='network_bridge.py',
-        name='network_bridge',
-        output='screen',
-        parameters=[{
-            'mode': 'client',
-            'host': '127.0.0.1',
-            'port': 9876,
-            'usv_id': usv_id
-        }]
-    )
-
     return LaunchDescription([
         camera_arg,
         use_joy_arg,
@@ -169,5 +155,4 @@ def generate_launch_description():
         static_tf_camera_to_odom,
         visual_tag_node,
         visual_imu_node,
-        network_bridge_node
     ])
