@@ -54,6 +54,9 @@ fi
 echo " User: $(whoami) | Host: $(hostname)"
 echo "=========================================================="
 
+# Suppress internal clock drift timestamp replacement spam while keeping connection info
+export RUST_LOG="zenoh=info,zenoh::net::routing::dispatcher::pubsub=off"
+
 if [ -n "${CFG_ARG}" ]; then
     exec "${ZENOH_BIN}" client -c "${CONFIG_FILE}" -e "${TARGET}"
 else

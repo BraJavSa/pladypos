@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # sync_boat_time.sh
-# Sends laptop UTC time and TimeZone automatically to USV boat via SSH
-# Usage: ./sync_boat_time.sh
+# Synchronizes USV boat system clock with GCS laptop using identical local time.
 # ==============================================================================
 
-TZ_NAME="$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || echo 'Europe/Madrid')"
-CURRENT_UTC="$(date -u +'%Y-%m-%d %H:%M:%S')"
+LAPTOP_LOCAL="$(date +'%Y-%m-%d %H:%M:%S')"
 
 echo "=========================================================="
 echo " Synchronizing USV Clock from GCS Laptop"
-echo " Laptop UTC: ${CURRENT_UTC}"
-echo " TimeZone:   ${TZ_NAME}"
+echo " Laptop Local Time: ${LAPTOP_LOCAL}"
 echo "=========================================================="
 
-ssh usv5 "sudo timedatectl set-timezone ${TZ_NAME} 2>/dev/null; sudo date -u -s '${CURRENT_UTC}'"
+ssh -t usv5 "sudo date -s '${LAPTOP_LOCAL}'"
 
-echo "[OK] USV Clock synchronized successfully!"
+echo "[OK] USV Clock synchronized to exact laptop local time!"

@@ -71,7 +71,8 @@ if [ -n "${CFG_ARG}" ]; then
     echo " Config: ${CONFIG_FILE} (drop_future_timestamp: false)"
 fi
 echo " User: $(whoami) | Host: $(hostname)"
-echo "=========================================================="
+# Suppress internal clock drift timestamp replacement spam while keeping connection info
+export RUST_LOG="zenoh=info,zenoh::net::routing::dispatcher::pubsub=off"
 
 if [ -n "${CFG_ARG}" ]; then
     exec "${ZENOH_BIN}" -c "${CONFIG_FILE}" -l "tcp/0.0.0.0:${PORT}"
