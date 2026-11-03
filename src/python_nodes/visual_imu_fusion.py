@@ -119,7 +119,7 @@ class VisualImuFusionNode(Node):
         self.create_subscription(Odometry, self.visual_odom_topic, self.visual_odom_cb, 10)
         self.create_subscription(Imu, self.imu_topic, self.imu_cb, 10)
 
-        # Validated pose in 'odom' frame (Z up)
+        # 1. Validated Fusion Pose (in 'odom' frame: (x, y, z=0), yaw from camera validated by IMU)
         self.latest_pos = None     # (x, y, z, timestamp)
         self.latest_ori = None     # (qw, qx, qy, qz)
         self.prev_pos = None
@@ -127,7 +127,12 @@ class VisualImuFusionNode(Node):
         self.vy = 0.0
         self.vz = 0.0
 
-        # IMU orientation reference (for sanity check only)
+        # 2. Raw Visual Pose (in 'odom' frame: (x, y, z=0), pure camera orientation without check)
+        self.raw_visual_pos = None  # (x, y, z, timestamp)
+        self.raw_visual_ori = None  # (qw, qx, qy, qz)
+
+        # 3. Pure IMU Pose (at odom center (0, 0, 0), orientation from IMU)
+        self.latest_imu_ori = None  # (qw, qx, qy, qz)
         self.latest_raw_imu_yaw = None
         self.latest_imu_time = None
         self.yaw_offset = None
@@ -140,13 +145,16 @@ class VisualImuFusionNode(Node):
             f"VisualImuFusionNode (Node 3) initialized:\n"
             f"  Visual Odometry Input: {self.visual_odom_topic}\n"
             f"  IMU Reference Input: {self.imu_topic}\n"
-            f"  Validated Odometry Output: {self.odom_topic} (frame: {self.frame_id} -> {self.child_frame_id})\n"
+            f"  TF Frames Broadcasted:\n"
+            f"    - {self.frame_id} -> {self.child_frame_id} (Validated Fusion Ground Truth)\n"
+            f"    - {self.frame_id} -> {self.child_frame_id}_visual (Pure Camera Detection)\n"
+            f"    - {self.frame_id} -> {self.child_frame_id}_imu (Pure IMU Orientation at origin)\n"
             f"  Pool Center Depth (Z): {self.water_depth} m\n"
-            f"  Broadcast TF ({self.frame_id} -> {self.child_frame_id}): {self.publish_tf}"
+            f"  Broadcast TF: {self.publish_tf}"
         )
 
     def imu_cb(self, msg: Imu):
-        """Updates IMU yaw reference for sanity checking."""
+        """Updates IMU yaw reference for sanity checking and diagnostic TF."""
         now_sec = time.time()
         ori = msg.orientation
         self.angular_vel_z = msg.angular_velocity.z
@@ -154,18 +162,36 @@ class VisualImuFusionNode(Node):
         if not (ori.w == 0.0 and ori.x == 0.0 and ori.y == 0.0 and ori.z == 0.0):
             raw_qw, raw_qx, raw_qy, raw_qz = ori.w, ori.x, ori.y, ori.z
             self.latest_raw_imu_yaw = quaternion_to_yaw_imu(raw_qw, raw_qx, raw_qy, raw_qz)
+            self.latest_imu_ori = (raw_qw, raw_qx, raw_qy, raw_qz)
             self.latest_imu_time = now_sec
 
     def visual_odom_cb(self, msg: Odometry):
         """
-        Validates camera measurement against IMU.
-        If valid: transforms pose into pool surface frame (odom) where Z is up.
-        If invalid (Z inverted or yaw differs drastically): discards.
+        Processes visual odometry:
+        1. Always records raw visual pose (X, Y in odom, Z=0, raw camera orientation) for TF: usv5_visual.
+        2. Validates against inverted Z and IMU yaw check.
+        3. If valid, updates validated pose for TF: usv5.
         """
         now_sec = time.time()
         ori_tag = msg.pose.pose.orientation
+        pos = msg.pose.pose.position
 
-        # 1. Gate A: Reject inverted Z (in camera optical frame, normal vz >= 0 points down into pool)
+        # 1. Transform raw camera measurement to pool surface frame 'odom' (Z=0, +Z up)
+        x_c, y_c, z_c = pos.x, pos.y, self.water_depth
+        qw_c, qx_c, qy_c, qz_c = ori_tag.w, ori_tag.x, ori_tag.y, ori_tag.z
+
+        x_o, y_o, z_o, qw_o, qx_o, qy_o, qz_o = transform_cam_pose_to_pool(
+            x_c, y_c, z_c, qw_c, qx_c, qy_c, qz_c, self.water_depth
+        )
+
+        # Force Z to 0.0 on pool water surface for the 2D boat plane
+        z_o = 0.0
+
+        # Always record pure camera detection (no validation, raw orientation)
+        self.raw_visual_pos = (x_o, y_o, z_o, now_sec)
+        self.raw_visual_ori = (qw_o, qx_o, qy_o, qz_o)
+
+        # 2. Gate A: Reject inverted Z (in camera optical frame, normal vz >= 0 points down into pool)
         if not (ori_tag.w == 0.0 and ori_tag.x == 0.0 and ori_tag.y == 0.0 and ori_tag.z == 0.0):
             vz = 1.0 - 2.0 * (ori_tag.x ** 2 + ori_tag.y ** 2)
             if vz >= 0.0:
@@ -177,7 +203,7 @@ class VisualImuFusionNode(Node):
 
             yaw_tag = quaternion_to_yaw_camera(ori_tag.w, ori_tag.x, ori_tag.y, ori_tag.z)
 
-            # 2. Gate B: Sanity check against IMU orientation (if IMU is active and fresh)
+            # 3. Gate B: Sanity check against IMU orientation (if IMU is active and fresh)
             imu_is_fresh = (
                 self.latest_raw_imu_yaw is not None and
                 self.latest_imu_time is not None and
@@ -208,15 +234,7 @@ class VisualImuFusionNode(Node):
                     throttle_duration_sec=5.0
                 )
 
-        # 3. Measurement validated: Transform camera pose to pool surface frame 'odom' (Z points up)
-        pos = msg.pose.pose.position
-        x_c, y_c, z_c = pos.x, pos.y, self.water_depth
-        qw_c, qx_c, qy_c, qz_c = ori_tag.w, ori_tag.x, ori_tag.y, ori_tag.z
-
-        x_o, y_o, z_o, qw_o, qx_o, qy_o, qz_o = transform_cam_pose_to_pool(
-            x_c, y_c, z_c, qw_c, qx_c, qy_c, qz_c, self.water_depth
-        )
-
+        # 4. Measurement validated: Record validated fusion pose
         if self.prev_pos is not None:
             px, py, pz, pt = self.prev_pos
             dt = now_sec - pt
@@ -230,78 +248,126 @@ class VisualImuFusionNode(Node):
         self.latest_ori = (qw_o, qx_o, qy_o, qz_o)
 
     def timer_callback(self):
-        """Publishes validated odometry and TF in 'odom' frame (Z up)."""
-        if self.latest_pos is None or self.latest_ori is None:
-            return
-
+        """Publishes validated odometry and the 3 diagnostic TFs."""
         now_sec = time.time()
-        # Drop if camera detection has timed out
-        if (now_sec - self.latest_pos[3]) > self.pos_timeout:
-            return
-
         stamp = self.get_clock().now().to_msg()
-        x, y, z, _ = self.latest_pos
-        vx, vy, vz = self.vx, self.vy, self.vz
-        qw, qx, qy, qz = self.latest_ori
 
-        odom_msg = Odometry()
-        odom_msg.header.stamp = stamp
-        odom_msg.header.frame_id = self.frame_id
-        odom_msg.child_frame_id = self.child_frame_id
+        # -------------------------------------------------------------
+        # TF 1: Validated Fusion Pose (odom -> usv5)
+        # -------------------------------------------------------------
+        if self.latest_pos is not None and self.latest_ori is not None:
+            if (now_sec - self.latest_pos[3]) <= self.pos_timeout:
+                x, y, z, _ = self.latest_pos
+                vx, vy, vz = self.vx, self.vy, self.vz
+                qw, qx, qy, qz = self.latest_ori
 
-        # Position in pool odom frame (Z = 0 at pool surface, +Z up)
-        odom_msg.pose.pose.position.x = x
-        odom_msg.pose.pose.position.y = y
-        odom_msg.pose.pose.position.z = z
+                odom_msg = Odometry()
+                odom_msg.header.stamp = stamp
+                odom_msg.header.frame_id = self.frame_id
+                odom_msg.child_frame_id = self.child_frame_id
 
-        # Orientation in pool odom frame (yaw around +Z up)
-        odom_msg.pose.pose.orientation.w = qw
-        odom_msg.pose.pose.orientation.x = qx
-        odom_msg.pose.pose.orientation.y = qy
-        odom_msg.pose.pose.orientation.z = qz
+                odom_msg.pose.pose.position.x = x
+                odom_msg.pose.pose.position.y = y
+                odom_msg.pose.pose.position.z = z
 
-        odom_msg.pose.covariance = [
-            0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.01
-        ]
+                odom_msg.pose.pose.orientation.w = qw
+                odom_msg.pose.pose.orientation.x = qx
+                odom_msg.pose.pose.orientation.y = qy
+                odom_msg.pose.pose.orientation.z = qz
 
-        odom_msg.twist.twist.linear.x = vx
-        odom_msg.twist.twist.linear.y = vy
-        odom_msg.twist.twist.linear.z = vz
-        odom_msg.twist.twist.angular.z = self.angular_vel_z
+                odom_msg.pose.covariance = [
+                    0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.01
+                ]
 
-        odom_msg.twist.covariance = [
-            0.05, 0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.05, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.05, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.1
-        ]
+                odom_msg.twist.twist.linear.x = vx
+                odom_msg.twist.twist.linear.y = vy
+                odom_msg.twist.twist.linear.z = vz
+                odom_msg.twist.twist.angular.z = self.angular_vel_z
 
-        self.odom_pub.publish(odom_msg)
+                odom_msg.twist.covariance = [
+                    0.05, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.05, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.05, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.1
+                ]
 
-        # Broadcast dynamic transform odom -> usv5
-        if self.publish_tf:
-            tf_msg = TransformStamped()
-            tf_msg.header.stamp = stamp
-            tf_msg.header.frame_id = self.frame_id
-            tf_msg.child_frame_id = self.child_frame_id
+                self.odom_pub.publish(odom_msg)
 
-            tf_msg.transform.translation.x = x
-            tf_msg.transform.translation.y = y
-            tf_msg.transform.translation.z = z
+                if self.publish_tf:
+                    tf_fusion = TransformStamped()
+                    tf_fusion.header.stamp = stamp
+                    tf_fusion.header.frame_id = self.frame_id
+                    tf_fusion.child_frame_id = self.child_frame_id
+                    tf_fusion.transform.translation.x = x
+                    tf_fusion.transform.translation.y = y
+                    tf_fusion.transform.translation.z = z
+                    tf_fusion.transform.rotation.w = qw
+                    tf_fusion.transform.rotation.x = qx
+                    tf_fusion.transform.rotation.y = qy
+                    tf_fusion.transform.rotation.z = qz
+                    self.tf_broadcaster.sendTransform(tf_fusion)
 
-            tf_msg.transform.rotation.w = qw
-            tf_msg.transform.rotation.x = qx
-            tf_msg.transform.rotation.y = qy
-            tf_msg.transform.rotation.z = qz
+        # -------------------------------------------------------------
+        # TF 2: Pure Camera Detection (odom -> usv5_visual)
+        # Position X, Y on water surface, pure camera orientation without check
+        # -------------------------------------------------------------
+        if self.publish_tf and self.raw_visual_pos is not None and self.raw_visual_ori is not None:
+            if (now_sec - self.raw_visual_pos[3]) <= self.pos_timeout:
+                vx_x, vx_y, vx_z, _ = self.raw_visual_pos
+                v_qw, v_qx, v_qy, v_qz = self.raw_visual_ori
 
-            self.tf_broadcaster.sendTransform(tf_msg)
+                tf_vis = TransformStamped()
+                tf_vis.header.stamp = stamp
+                tf_vis.header.frame_id = self.frame_id
+                tf_vis.child_frame_id = f"{self.child_frame_id}_visual"
+                tf_vis.transform.translation.x = vx_x
+                tf_vis.transform.translation.y = vx_y
+                tf_vis.transform.translation.z = vx_z
+                tf_vis.transform.rotation.w = v_qw
+                tf_vis.transform.rotation.x = v_qx
+                tf_vis.transform.rotation.y = v_qy
+                tf_vis.transform.rotation.z = v_qz
+                self.tf_broadcaster.sendTransform(tf_vis)
+
+        # -------------------------------------------------------------
+        # TF 3: Pure IMU Pose (odom -> usv5_imu)
+        # Position fixed at pool origin (0, 0, 0), orientation directly from IMU
+        # -------------------------------------------------------------
+        if self.publish_tf and self.latest_imu_ori is not None and self.latest_imu_time is not None:
+            if (now_sec - self.latest_imu_time) <= 2.0:
+                imu_qw, imu_qx, imu_qy, imu_qz = self.latest_imu_ori
+
+                # If a reference offset was established with camera, apply it so it aligns with pool frame
+                if self.yaw_offset is not None:
+                    # Yaw in pool odom: imu_yaw + yaw_offset
+                    pool_imu_yaw = self.latest_raw_imu_yaw + self.yaw_offset
+                    half = pool_imu_yaw * 0.5
+                    qw_i = math.cos(half)
+                    qx_i = 0.0
+                    qy_i = 0.0
+                    qz_i = math.sin(half)
+                else:
+                    qw_i, qx_i, qy_i, qz_i = imu_qw, imu_qx, imu_qy, imu_qz
+
+                tf_imu = TransformStamped()
+                tf_imu.header.stamp = stamp
+                tf_imu.header.frame_id = self.frame_id
+                tf_imu.child_frame_id = f"{self.child_frame_id}_imu"
+                tf_imu.transform.translation.x = 0.0
+                tf_imu.transform.translation.y = 0.0
+                tf_imu.transform.translation.z = 0.0
+                tf_imu.transform.rotation.w = qw_i
+                tf_imu.transform.rotation.x = qx_i
+                tf_imu.transform.rotation.y = qy_i
+                tf_imu.transform.rotation.z = qz_i
+                self.tf_broadcaster.sendTransform(tf_imu)
 
 
 def main(args=None):
