@@ -4,7 +4,7 @@ import yaml
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Bool, Float32MultiArray
 from ament_index_python.packages import get_package_share_directory
 
 class TeleopMixer(Node):
@@ -18,6 +18,14 @@ class TeleopMixer(Node):
             self.joy_callback,
             10
         )
+        self.auto_sub = self.create_subscription(
+            Bool,
+            'autonomous_active',
+            self.auto_callback,
+            10
+        )
+        self.autonomous_active = False
+        self.last_auto_msg_time = 0.0
         
         # Declare ROS 2 parameters for deadzone and axis inversions
         self.declare_parameter('yaw_deadzone', 0.15)
@@ -57,7 +65,14 @@ class TeleopMixer(Node):
         sign = 1.0 if value > 0.0 else -1.0
         return sign * (abs(value) - deadzone) / (1.0 - deadzone)
 
+    def auto_callback(self, msg: Bool):
+        self.autonomous_active = bool(msg.data)
+        self.last_auto_msg_time = self.get_clock().now().nanoseconds / 1e9
+
     def joy_callback(self, msg):
+        now = self.get_clock().now().nanoseconds / 1e9
+        if self.autonomous_active and (now - self.last_auto_msg_time) < 0.8:
+            return
         if len(msg.axes) < 3:
             return
 

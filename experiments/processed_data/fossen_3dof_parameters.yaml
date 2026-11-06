@@ -1,0 +1,42 @@
+# White-Box 3-DOF Fossen Models Identified for PlaDyPos
+pladypos_fossen_3dof:
+  stage1_linear_least_squares:
+    m11: 37.857617
+    m22: 49.253260
+    m33: 8.275723
+    Xu: 98.709759
+    Xuu: 75.412993
+    Yv: 78.797316
+    Yvv: 0.000000
+    Nr: 9.368173
+    Nrr: 4.885564
+  stage2_whitebox_refined_bounded:
+    m11: 100.000000
+    m22: 100.000000
+    m33: 9.657193
+    Xu: 123.375047
+    Xuu: 149.884332
+    Yv: 88.681673
+    Yvv: 205.930049
+    Nr: 13.331958
+    Nrr: 2.647027
+  stage2_whitebox_refined_optimal:
+    m11: 219.138484
+    m22: 230.438467
+    m33: 9.607299
+    Xu: 135.307415
+    Xuu: 80.600186
+    Yv: 110.668637
+    Yvv: 51.441132
+    Nr: 14.352149
+    Nrr: 2.188294
+  linear_6_parameters:
+    m11: 223.336431
+    m22: 229.786770
+    m33: 9.711059
+    Xu: 161.848228
+    Xuu: 0.000000
+    Yv: 121.144497
+    Yvv: 0.000000
+    Nr: 17.246339
+    Nrr: 0.000000

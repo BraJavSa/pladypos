@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # start_zenoh_usv.sh
-# Portable startup script for USV Onboard Zenoh Bridge client
-# Connects to the local forwarded reverse SSH tunnel endpoint (tcp/127.0.0.1:7447).
+# Connects the USV Onboard Zenoh Bridge Client directly to the central Zenoh
+# Router running on rawfie (tcp/10.0.10.218:7447 on the 10.0.10.0/16 subnet).
+# No reverse SSH tunnel is required!
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-TARGET="${1:-tcp/127.0.0.1:7447}"
+TARGET="${1:-tcp/10.0.10.218:7447}"
 ZENOH_BIN=""
 
 if command -v zenoh-bridge-ros2dds &> /dev/null; then
@@ -39,25 +40,19 @@ elif [ -f "${SCRIPT_DIR}/../config/zenoh_config.json5" ]; then
     CONFIG_FILE="${SCRIPT_DIR}/../config/zenoh_config.json5"
 fi
 
-CFG_ARG=""
-if [ -n "${CONFIG_FILE}" ]; then
-    CFG_ARG="-c ${CONFIG_FILE}"
-fi
-
 echo "=========================================================="
-echo " Starting USV Zenoh Bridge Client"
+echo " Starting USV Zenoh Bridge Client -> rawfie Router"
 echo " Binary: ${ZENOH_BIN}"
 echo " Connecting to: ${TARGET}"
-if [ -n "${CFG_ARG}" ]; then
-    echo " Config: ${CONFIG_FILE} (drop_future_timestamp: false)"
+if [ -n "${CONFIG_FILE}" ]; then
+    echo " Config: ${CONFIG_FILE}"
 fi
 echo " User: $(whoami) | Host: $(hostname)"
 echo "=========================================================="
 
-# Suppress internal clock drift timestamp replacement spam while keeping connection info
 export RUST_LOG="zenoh=info,zenoh::net::routing::dispatcher::pubsub=off"
 
-if [ -n "${CFG_ARG}" ]; then
+if [ -n "${CONFIG_FILE}" ]; then
     exec "${ZENOH_BIN}" client -c "${CONFIG_FILE}" -e "${TARGET}"
 else
     exec "${ZENOH_BIN}" client -e "${TARGET}"
