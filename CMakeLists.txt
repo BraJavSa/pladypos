@@ -20,6 +20,7 @@ install(PROGRAMS
   scripts/start_zenoh_gcs.sh
   scripts/start_zenoh_usv.sh
   scripts/sync_boat_time.sh
+  bin/zenoh-bridge-ros2dds
   DESTINATION lib/${PROJECT_NAME}
 )
 

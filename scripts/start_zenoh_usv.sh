@@ -12,10 +12,14 @@ PKG_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TARGET="${1:-tcp/10.0.10.218:7447}"
 ZENOH_BIN=""
 
-if command -v zenoh-bridge-ros2dds &> /dev/null; then
-    ZENOH_BIN="$(command -v zenoh-bridge-ros2dds)"
-elif [ -f "${PKG_ROOT}/bin/zenoh-bridge-ros2dds" ]; then
+if [ -x "${SCRIPT_DIR}/zenoh-bridge-ros2dds" ]; then
+    ZENOH_BIN="${SCRIPT_DIR}/zenoh-bridge-ros2dds"
+elif [ -x "${PKG_ROOT}/bin/zenoh-bridge-ros2dds" ]; then
     ZENOH_BIN="${PKG_ROOT}/bin/zenoh-bridge-ros2dds"
+elif [ -x "${SCRIPT_DIR}/../../share/pladypos/bin/zenoh-bridge-ros2dds" ]; then
+    ZENOH_BIN="${SCRIPT_DIR}/../../share/pladypos/bin/zenoh-bridge-ros2dds"
+elif command -v zenoh-bridge-ros2dds &> /dev/null; then
+    ZENOH_BIN="$(command -v zenoh-bridge-ros2dds)"
 elif [ -f "${HOME}/bin/zenoh-bridge-ros2dds" ]; then
     ZENOH_BIN="${HOME}/bin/zenoh-bridge-ros2dds"
 elif [ -f "${HOME}/zenoh-bridge-ros2dds" ]; then

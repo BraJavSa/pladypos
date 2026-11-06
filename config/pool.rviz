@@ -55,18 +55,20 @@ Visualization Manager:
       Filter (whitelist): ""
       Frame Timeout: 15
       Frames:
-        All Enabled: false
+        All Enabled: true
         camera:
           Value: true
         odom:
           Value: true
         usv5_odom:
           Value: true
+        usv5_visual:
+          Value: true
       Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
-      Show Names: false
+      Show Names: true
       Tree:
         camera:
           odom:

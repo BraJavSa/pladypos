@@ -26,7 +26,7 @@ def generate_launch_description():
     use_joy_arg = DeclareLaunchArgument(
         'use_joy',
         default_value='true',
-        description='Launch joy_node on the GCS laptop to send /usv5/joy to the boat'
+        description='Launch joy_node on the GCS laptop to send /usv5/joy to the server'
     )
 
     use_rviz_arg = DeclareLaunchArgument(
@@ -35,7 +35,13 @@ def generate_launch_description():
         description='Launch RViz2 with pool.rviz on the GCS laptop'
     )
 
-    # 1. GCS Joystick Node (publishes /usv5/joy -> rawfie Zenoh Router -> USV teleop_mixer)
+    water_depth_arg = DeclareLaunchArgument(
+        'water_depth',
+        default_value='5.1',
+        description='Distance from overhead camera to pool water surface in meters'
+    )
+
+    # 1. GCS Joystick Node (publishes /usv5/joy -> rawfie server teleop_mixer -> /usv5/pwm_out)
     joy_node = Node(
         package='joy',
         executable='joy_node',
@@ -45,7 +51,26 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('use_joy'))
     )
 
-    # 2. Local Pool & Figure-8 Reference Marker Publisher (ensures RViz always displays pool + Figure-8)
+    # 2. Local Static TF (camera -> odom) so RViz always has the full TF tree immediately
+    static_tf_camera_to_odom = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_tf_camera_to_odom_gcs',
+        output='screen',
+        arguments=[
+            '--x', '0.0',
+            '--y', '0.0',
+            '--z', LaunchConfiguration('water_depth'),
+            '--qx', '1.0',
+            '--qy', '0.0',
+            '--qz', '0.0',
+            '--qw', '0.0',
+            '--frame-id', 'camera',
+            '--child-frame-id', 'odom'
+        ]
+    )
+
+    # 3. Local Pool & Figure-8 Reference Marker Publisher (ensures RViz always displays pool + Figure-8)
     pool_boundary_node = Node(
         package='pladypos',
         executable='pool_boundary_publisher.py',
@@ -57,7 +82,7 @@ def generate_launch_description():
         }]
     )
 
-    # 3. RViz2 Monitoring Window (displays pool boundary, Figure-8 reference, USV TF, and executed path)
+    # 4. RViz2 Monitoring Window (displays pool boundary, Figure-8 reference, USV TF, and executed path)
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -70,7 +95,9 @@ def generate_launch_description():
     return LaunchDescription([
         use_joy_arg,
         use_rviz_arg,
+        water_depth_arg,
         joy_node,
+        static_tf_camera_to_odom,
         pool_boundary_node,
         rviz_node,
     ])
