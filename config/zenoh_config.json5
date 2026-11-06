@@ -2,5 +2,15 @@
   timestamping: {
     enabled: true,
     drop_future_timestamp: false
+  },
+  plugins: {
+    ros2dds: {
+      deny: {
+        publishers: ["/camera_.*"],
+        subscribers: ["/camera_.*"],
+        service_servers: ["/camera_.*"],
+        service_clients: ["/camera_.*"]
+      }
+    }
   }
 }
