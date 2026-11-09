@@ -12,8 +12,32 @@
     ros2dds: {
       ros_localhost_only: false,
       deny: {
-        publishers: ["/camera_.*", "/rosout", "/parameter_events"],
-        subscribers: ["/camera_.*", "/rosout", "/parameter_events"],
+        publishers: [
+          "/camera_.*",
+          "/rosout",
+          "/parameter_events",
+          "/usv5/imu/data_raw",
+          "/usv5/imu/mag",
+          "/usv5/visual_odom",
+          "/usv5/tag_detected",
+          "/usv5/reference_path",
+          "/usv5/executed_path",
+          "/joy",
+          "/joy/set_feedback"
+        ],
+        subscribers: [
+          "/camera_.*",
+          "/rosout",
+          "/parameter_events",
+          "/usv5/imu/data_raw",
+          "/usv5/imu/mag",
+          "/usv5/visual_odom",
+          "/usv5/tag_detected",
+          "/usv5/reference_path",
+          "/usv5/executed_path",
+          "/joy",
+          "/joy/set_feedback"
+        ],
         service_servers: ["/camera_.*", "/rosout", "/parameter_events", "/.*parameter.*"],
         service_clients: ["/camera_.*", "/rosout", "/parameter_events", "/.*parameter.*"]
       }

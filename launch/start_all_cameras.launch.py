@@ -130,20 +130,7 @@ def generate_launch_description():
     )
     nodes.append(direct_usv_fusion)
 
-    # 6. Pool Boundary & Figure-8 Reference Marker Publisher on rawfie
-    pool_boundary = ExecuteProcess(
-        cmd=[
-            'python3', '/config/pool_boundary_publisher.py',
-            '--ros-args',
-            '-p', 'frame_id:=odom',
-            '-p', 'marker_topic:=/pool_boundary'
-        ],
-        output='screen',
-        emulate_tty=True
-    )
-    nodes.append(pool_boundary)
-
-    # 7. Central Zenoh Router on rawfie (v1.10.2, ROS_DOMAIN_ID=10, --no-multicast-scouting)
+    # 6. Central Zenoh Router on rawfie (v1.10.2, ROS_DOMAIN_ID=10, --no-multicast-scouting)
     zenoh_router = ExecuteProcess(
         cmd=[
             '/config/zenoh-bridge-ros2dds',

@@ -60,16 +60,14 @@ class PoolBoundaryPublisher(Node):
             p.z = 0.02
             self.fig8_points.append(p)
 
-        # Publish at 1 Hz (latched visual markers)
-        self.create_timer(1.0, self.publish_markers)
+        # Publish at 0.5 Hz (every 2 seconds) for minimal ROS overhead
+        self.create_timer(2.0, self.publish_markers)
+        self.publish_markers()
         self.get_logger().info(f"PoolBoundaryPublisher started on {self.marker_topic} (frame: {self.frame_id})")
 
     def publish_markers(self):
-        stamp = self.get_clock().now().to_msg()
-
         # 1. Outer Pool Walls (Cyan / Bright Blue Line Strip)
         wall_marker = Marker()
-        wall_marker.header.stamp = stamp
         wall_marker.header.frame_id = self.frame_id
         wall_marker.ns = "pool_outer_wall"
         wall_marker.id = 0
@@ -88,7 +86,6 @@ class PoolBoundaryPublisher(Node):
 
         # 2. 70% Centered Figure-8 Reference Trajectory (Crimson Red Line Strip)
         fig8_marker = Marker()
-        fig8_marker.header.stamp = stamp
         fig8_marker.header.frame_id = self.frame_id
         fig8_marker.ns = "figure8_reference"
         fig8_marker.id = 10
@@ -100,23 +97,14 @@ class PoolBoundaryPublisher(Node):
         fig8_marker.points = self.fig8_points
         self.pub_marker.publish(fig8_marker)
 
-        # 3. Figure-8 Center / Start Point (Emerald Green Sphere)
-        start_marker = Marker()
-        start_marker.header.stamp = stamp
-        start_marker.header.frame_id = self.frame_id
-        start_marker.ns = "figure8_start"
-        start_marker.id = 11
-        start_marker.type = Marker.SPHERE
-        start_marker.action = Marker.ADD
-        start_marker.pose.position.x = self.center_x
-        start_marker.pose.position.y = self.center_y
-        start_marker.pose.position.z = 0.05
-        start_marker.pose.orientation.w = 1.0
-        start_marker.scale.x = 0.18
-        start_marker.scale.y = 0.18
-        start_marker.scale.z = 0.18
-        start_marker.color = ColorRGBA(r=0.06, g=0.72, b=0.51, a=0.95)
-        self.pub_marker.publish(start_marker)
+        # Delete legacy start sphere & executed trail markers if present in RViz
+        for ns_del, id_del in (("figure8_start", 11), ("usv_executed_trail", 13)):
+            del_marker = Marker()
+            del_marker.header.frame_id = self.frame_id
+            del_marker.ns = ns_del
+            del_marker.id = id_del
+            del_marker.action = Marker.DELETE
+            self.pub_marker.publish(del_marker)
 
 
 def main(args=None):

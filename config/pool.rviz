@@ -80,9 +80,7 @@ Visualization Manager:
       Namespaces:
         pool_outer_wall: true
         figure8_reference: true
-        figure8_start: true
         figure8_target: true
-        usv_executed_trail: true
       Topic:
         Depth: 10
         Durability Policy: Volatile
@@ -90,62 +88,6 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /pool_boundary
-      Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz_default_plugins/Path
-      Color: 242; 56; 56
-      Enabled: true
-      Head Diameter: 0.1
-      Head Length: 0.1
-      Length: 0.3
-      Line Style: Billboards
-      Line Width: 0.045
-      Name: Reference Trajectory (Figure-8)
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0.02
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.03
-      Shaft Diameter: 0.05
-      Shaft Length: 0.1
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /usv5/reference_path
-      Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz_default_plugins/Path
-      Color: 25; 230; 90
-      Enabled: true
-      Head Diameter: 0.1
-      Head Length: 0.1
-      Length: 0.3
-      Line Style: Billboards
-      Line Width: 0.035
-      Name: Executed USV Path
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0.03
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.03
-      Shaft Diameter: 0.05
-      Shaft Length: 0.1
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /usv5/executed_path
       Value: true
   Enabled: true
   Global Options:
