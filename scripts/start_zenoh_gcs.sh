@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # start_zenoh_gcs.sh
-# Connects the GCS Laptop to the central Zenoh Router running on rawfie
-# (tcp/10.250.253.1:7447).
+# Connects the GCS Laptop (ROS_DOMAIN_ID=0) to the central Zenoh Router running
+# on rawfie (tcp/10.250.253.1:7447, ROS_DOMAIN_ID=10).
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,22 +45,23 @@ elif [ -f "${SCRIPT_DIR}/../config/zenoh_config.json5" ]; then
     CONFIG_FILE="${SCRIPT_DIR}/../config/zenoh_config.json5"
 fi
 
+unset ROS_LOCALHOST_ONLY
+unset ROS_AUTOMATIC_DISCOVERY_RANGE
+export ROS_DOMAIN_ID=0
+export RUST_LOG="zenoh=info,zenoh::net::routing::dispatcher::pubsub=off"
+
 echo "=========================================================="
 echo " Starting GCS Zenoh Bridge Client -> rawfie Router"
 echo " Binary: ${ZENOH_BIN}"
-echo " Connecting to: ${TARGET} (ROS_LOCALHOST_ONLY=1)"
+echo " Connecting to: ${TARGET} (ROS_DOMAIN_ID=0)"
 if [ -n "${CONFIG_FILE}" ]; then
     echo " Config: ${CONFIG_FILE}"
 fi
 echo " User: $(whoami) | Host: $(hostname)"
 echo "=========================================================="
 
-export ROS_LOCALHOST_ONLY=1
-export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
-export RUST_LOG="zenoh=info,zenoh::net::routing::dispatcher::pubsub=off"
-
 if [ -n "${CONFIG_FILE}" ]; then
-    exec "${ZENOH_BIN}" client --no-multicast-scouting --ros-localhost-only -c "${CONFIG_FILE}" -e "${TARGET}"
+    exec "${ZENOH_BIN}" client -d 0 --no-multicast-scouting -c "${CONFIG_FILE}" -e "${TARGET}"
 else
-    exec "${ZENOH_BIN}" client --no-multicast-scouting --ros-localhost-only -e "${TARGET}"
+    exec "${ZENOH_BIN}" client -d 0 --no-multicast-scouting -e "${TARGET}"
 fi

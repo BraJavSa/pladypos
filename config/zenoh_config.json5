@@ -10,7 +10,7 @@
   },
   plugins: {
     ros2dds: {
-      ros_localhost_only: true,
+      ros_localhost_only: false,
       deny: {
         publishers: ["/camera_.*", "/rosout", "/parameter_events"],
         subscribers: ["/camera_.*", "/rosout", "/parameter_events"],

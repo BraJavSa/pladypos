@@ -69,8 +69,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        SetEnvironmentVariable('ROS_LOCALHOST_ONLY', '1'),
-        SetEnvironmentVariable('ROS_AUTOMATIC_DISCOVERY_RANGE', 'LOCALHOST'),
+        SetEnvironmentVariable('ROS_DOMAIN_ID', '5'),
         center_x_arg,
         center_y_arg,
         scale_arg,

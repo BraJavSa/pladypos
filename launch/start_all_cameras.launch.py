@@ -6,8 +6,8 @@ from launch_ros.actions import Node
 def generate_launch_description():
     """
     Server launch file on rawfie (inside ros2_streaming_container):
-      - Locks DDS strictly to LOCALHOST (ROS_LOCALHOST_ONLY=1, ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST)
-        so camera_0354 and DDS discovery NEVER flood the 10.0.10.0/16 boat WiFi subnet.
+      - Isolates server DDS to ROS_DOMAIN_ID=10 so camera_0354 and DDS discovery NEVER
+        collide with USV (ROS_DOMAIN_ID=5) on the 10.0.10.0/16 subnet.
       1. Strictly ONLY camera .204 (camera_0354)
       2. web_video_server (port 8082) + stream_guard.py (port 8083)
       3. visual_tag_estimator.py -> /usv5/visual_odom + TF camera -> usv5_visual
@@ -16,14 +16,13 @@ def generate_launch_description():
          when IMU is absent) -> /usv5/odometry/filtered + TF odom -> usv5_odom
       6. teleop_mixer.py -> maps /usv5/joy (from laptop) -> /usv5/pwm_out (to USV NUC)
       7. pool_boundary_publisher.py -> publishes pool walls & 70% Figure-8 on /pool_boundary
-      8. zenoh-bridge-ros2dds router on tcp/0.0.0.0:7447 (--no-multicast-scouting --ros-localhost-only)
+      8. zenoh-bridge-ros2dds router on tcp/0.0.0.0:7447 (-d 10 --no-multicast-scouting)
     """
     active_cam_id = '0354'
     calib = '/config/calibration_536890354.yaml'
 
     nodes = [
-        SetEnvironmentVariable('ROS_LOCALHOST_ONLY', '1'),
-        SetEnvironmentVariable('ROS_AUTOMATIC_DISCOVERY_RANGE', 'LOCALHOST'),
+        SetEnvironmentVariable('ROS_DOMAIN_ID', '10'),
     ]
 
     # 1. Strictly Camera .204 (0354) ONLY
@@ -155,12 +154,12 @@ def generate_launch_description():
     )
     nodes.append(pool_boundary)
 
-    # 8. Central Zenoh Router on rawfie (v1.10.2, --no-multicast-scouting --ros-localhost-only)
+    # 8. Central Zenoh Router on rawfie (v1.10.2, ROS_DOMAIN_ID=10, --no-multicast-scouting)
     zenoh_router = ExecuteProcess(
         cmd=[
             '/config/zenoh-bridge-ros2dds',
+            '-d', '10',
             '--no-multicast-scouting',
-            '--ros-localhost-only',
             '-c', '/config/zenoh_config.json5',
             '-l', 'tcp/0.0.0.0:7447'
         ],

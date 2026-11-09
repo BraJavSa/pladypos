@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export ROS_DOMAIN_ID=10
 source /opt/ros/jazzy/setup.bash
 exec python3 /config/inverse_dynamics_controller.py --ros-args \
   -p center_x:=-0.5713 \

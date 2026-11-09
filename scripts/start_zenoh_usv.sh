@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # start_zenoh_usv.sh
-# Connects the USV Onboard Zenoh Bridge Client directly to the central Zenoh
-# Router running on rawfie (tcp/10.0.10.218:7447 on the 10.0.10.0/16 subnet).
-# Forces --ros-localhost-only and --no-multicast-scouting so DDS never loops
-# over the 10.0.10.0/16 WiFi subnet.
+# Connects the USV Onboard Zenoh Bridge Client (ROS_DOMAIN_ID=5) directly to the
+# central Zenoh Router running on rawfie (tcp/10.0.10.218:7447, ROS_DOMAIN_ID=10).
+# Using distinct ROS_DOMAIN_IDs (5 on USV vs 10 on rawfie) completely prevents
+# any DDS multicast loop or camera stream leak across the 10.0.10.0/16 subnet.
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,22 +45,23 @@ elif [ -f "${SCRIPT_DIR}/../config/zenoh_config.json5" ]; then
     CONFIG_FILE="${SCRIPT_DIR}/../config/zenoh_config.json5"
 fi
 
+unset ROS_LOCALHOST_ONLY
+unset ROS_AUTOMATIC_DISCOVERY_RANGE
+export ROS_DOMAIN_ID=5
+export RUST_LOG="zenoh=info,zenoh::net::routing::dispatcher::pubsub=off"
+
 echo "=========================================================="
 echo " Starting USV Zenoh Bridge Client -> rawfie Router"
 echo " Binary: ${ZENOH_BIN}"
-echo " Connecting to: ${TARGET} (ROS_LOCALHOST_ONLY=1)"
+echo " Connecting to: ${TARGET} (ROS_DOMAIN_ID=5)"
 if [ -n "${CONFIG_FILE}" ]; then
     echo " Config: ${CONFIG_FILE}"
 fi
 echo " User: $(whoami) | Host: $(hostname)"
 echo "=========================================================="
 
-export ROS_LOCALHOST_ONLY=1
-export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
-export RUST_LOG="zenoh=info,zenoh::net::routing::dispatcher::pubsub=off"
-
 if [ -n "${CONFIG_FILE}" ]; then
-    exec "${ZENOH_BIN}" client --no-multicast-scouting --ros-localhost-only -c "${CONFIG_FILE}" -e "${TARGET}"
+    exec "${ZENOH_BIN}" client -d 5 --no-multicast-scouting -c "${CONFIG_FILE}" -e "${TARGET}"
 else
-    exec "${ZENOH_BIN}" client --no-multicast-scouting --ros-localhost-only -e "${TARGET}"
+    exec "${ZENOH_BIN}" client -d 5 --no-multicast-scouting -e "${TARGET}"
 fi

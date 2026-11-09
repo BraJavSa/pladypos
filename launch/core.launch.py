@@ -11,11 +11,10 @@ from launch_ros.actions import Node
 def generate_launch_description():
     """
     Ultra-lightweight onboard launch file for the USV NUC (pladypos-usv5).
-    Runs ONLY hardware I/O:
+    Runs ONLY hardware I/O in ROS_DOMAIN_ID=5:
       1. serial_bridge.py: receives control actions (/usv5/pwm_out) from the server
          or controller and drives the Arduino Micro thrusters.
       2. driver_imu.py + imu_filter_madgwick_node: publishes /usv5/imu/data to the server.
-    Locks DDS to LOCALHOST so all cross-machine communication flows strictly over Zenoh TCP.
     """
     usv_id = 5
     try:
@@ -104,8 +103,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        SetEnvironmentVariable('ROS_LOCALHOST_ONLY', '1'),
-        SetEnvironmentVariable('ROS_AUTOMATIC_DISCOVERY_RANGE', 'LOCALHOST'),
+        SetEnvironmentVariable('ROS_DOMAIN_ID', '5'),
         baud_arg,
         port_imu_arg,
         port_arduino_arg,
