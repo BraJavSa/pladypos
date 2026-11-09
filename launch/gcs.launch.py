@@ -2,7 +2,7 @@ import os
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -93,6 +93,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        SetEnvironmentVariable('ROS_LOCALHOST_ONLY', '1'),
+        SetEnvironmentVariable('ROS_AUTOMATIC_DISCOVERY_RANGE', 'LOCALHOST'),
         use_joy_arg,
         use_rviz_arg,
         water_depth_arg,

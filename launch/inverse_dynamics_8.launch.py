@@ -2,7 +2,7 @@ import os
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -39,10 +39,6 @@ def generate_launch_description():
         'use_rviz', default_value='false', description='Set true only if launching on GCS laptop with display'
     )
 
-    # 3-DOF Fossen Inverse Dynamics Controller Node (30 Hz onboard the USV)
-    # Subscribes to /usv5/odometry/filtered (from onboard direct_usv_fusion),
-    # /usv5/visual_odom (from rawfie), and /usv5/imu/data (local 100 Hz IMU),
-    # and publishes /usv5/pwm_out + RViz paths (/usv5/reference_path, /usv5/executed_path, /pool_boundary).
     controller_node = Node(
         package='pladypos',
         executable='inverse_dynamics_controller.py',
@@ -73,6 +69,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        SetEnvironmentVariable('ROS_LOCALHOST_ONLY', '1'),
+        SetEnvironmentVariable('ROS_AUTOMATIC_DISCOVERY_RANGE', 'LOCALHOST'),
         center_x_arg,
         center_y_arg,
         scale_arg,

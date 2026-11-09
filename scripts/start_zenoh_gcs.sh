@@ -48,17 +48,19 @@ fi
 echo "=========================================================="
 echo " Starting GCS Zenoh Bridge Client -> rawfie Router"
 echo " Binary: ${ZENOH_BIN}"
-echo " Connecting to: ${TARGET}"
+echo " Connecting to: ${TARGET} (ROS_LOCALHOST_ONLY=1)"
 if [ -n "${CONFIG_FILE}" ]; then
     echo " Config: ${CONFIG_FILE}"
 fi
 echo " User: $(whoami) | Host: $(hostname)"
 echo "=========================================================="
 
+export ROS_LOCALHOST_ONLY=1
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 export RUST_LOG="zenoh=info,zenoh::net::routing::dispatcher::pubsub=off"
 
 if [ -n "${CONFIG_FILE}" ]; then
-    exec "${ZENOH_BIN}" client -c "${CONFIG_FILE}" -e "${TARGET}"
+    exec "${ZENOH_BIN}" client --no-multicast-scouting --ros-localhost-only -c "${CONFIG_FILE}" -e "${TARGET}"
 else
-    exec "${ZENOH_BIN}" client -e "${TARGET}"
+    exec "${ZENOH_BIN}" client --no-multicast-scouting --ros-localhost-only -e "${TARGET}"
 fi
