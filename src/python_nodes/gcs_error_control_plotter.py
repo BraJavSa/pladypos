@@ -303,10 +303,13 @@ def main(args=None):
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 8.0), sharex=True)
     fig.canvas.manager.set_window_title("PlaDyPos USV - Tracking Errors & Control Actions")
 
-    # Dual Y-axes for Control Actions
+    # Dual Y-axes for Control Actions (disable grid on twinx so grid lines never cross over the legend!)
     ax1_r = ax1.twinx()
     ax2_r = ax2.twinx()
     ax3_r = ax3.twinx()
+    ax1_r.grid(False)
+    ax2_r.grid(False)
+    ax3_r.grid(False)
 
     # Subplot 1: Surge (e_u & T_u) - No title, all English labels
     line_eu, = ax1.plot([], [], color='#1f77b4', lw=2.0, label='Surge Error $e_u$ [m]')
@@ -317,7 +320,8 @@ def main(args=None):
     ax1.set_ylim(-1.2, 1.2)
     ax1_r.set_ylim(-25.0, 25.0)
     lines1 = [line_eu, line_Tu]
-    ax1.legend(lines1, [l.get_label() for l in lines1], loc='upper right')
+    leg1 = ax1_r.legend(lines1, [l.get_label() for l in lines1], loc='upper right', frameon=True, facecolor='white', edgecolor='#cccccc', framealpha=0.95)
+    leg1.set_zorder(100)
 
     # Subplot 2: Sway (e_v & T_v) - No title, all English labels
     line_ev, = ax2.plot([], [], color='#2ca02c', lw=2.0, label='Sway Error $e_v$ [m]')
@@ -328,7 +332,8 @@ def main(args=None):
     ax2.set_ylim(-1.2, 1.2)
     ax2_r.set_ylim(-20.0, 20.0)
     lines2 = [line_ev, line_Tv]
-    ax2.legend(lines2, [l.get_label() for l in lines2], loc='upper right')
+    leg2 = ax2_r.legend(lines2, [l.get_label() for l in lines2], loc='upper right', frameon=True, facecolor='white', edgecolor='#cccccc', framealpha=0.95)
+    leg2.set_zorder(100)
 
     # Subplot 3: Yaw (e_psi & T_r) - No title, all English labels
     line_epsi, = ax3.plot([], [], color='#9467bd', lw=2.0, label='Yaw Error $e_\\psi$ [rad]')
@@ -340,7 +345,8 @@ def main(args=None):
     ax3.set_ylim(-math.pi, math.pi)
     ax3_r.set_ylim(-12.0, 12.0)
     lines3 = [line_epsi, line_Tr]
-    ax3.legend(lines3, [l.get_label() for l in lines3], loc='upper right')
+    leg3 = ax3_r.legend(lines3, [l.get_label() for l in lines3], loc='upper right', frameon=True, facecolor='white', edgecolor='#cccccc', framealpha=0.95)
+    leg3.set_zorder(100)
 
     plt.tight_layout()
 

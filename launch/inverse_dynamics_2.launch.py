@@ -12,7 +12,7 @@ def generate_launch_description():
     """
     inverse_dynamics_2.launch.py
     ============================
-    Faster Figure-8 Inverse Dynamics Controller (period_s = 50.0 s vs 90.0 s).
+    Moderately Faster Figure-8 Inverse Dynamics Controller (period_s = 70.0 s vs 90.0 s).
     """
     pkg_share = get_package_share_directory('pladypos')
     usv_id = 5
@@ -38,7 +38,7 @@ def generate_launch_description():
         'scale_factor', default_value='0.70', description='Fraction of pool workspace (0.70 = 70%)'
     )
     period_arg = DeclareLaunchArgument(
-        'period_s', default_value='50.0', description='Faster Figure-8 period [s] (default: 50.0 s)'
+        'period_s', default_value='70.0', description='Moderately faster Figure-8 period [s] (default: 70.0 s vs 90.0 s)'
     )
     kp_x_arg = DeclareLaunchArgument(
         'kp_x', default_value='1.15', description='Longitudinal (surge) proportional gain'
@@ -47,7 +47,7 @@ def generate_launch_description():
         'kd_x', default_value='1.35', description='Longitudinal (surge) derivative gain'
     )
     max_tau_u_arg = DeclareLaunchArgument(
-        'max_tau_u', default_value='20.0', description='Max longitudinal (surge) force [N]'
+        'max_tau_u', default_value='22.0', description='Max longitudinal (surge) force [N]'
     )
     kp_y_arg = DeclareLaunchArgument(
         'kp_y', default_value='0.95', description='Lateral (sway) proportional gain'
