@@ -123,8 +123,9 @@ class DirectUsvFusion(Node):
         self.prev_imu_yaw = None
         self.fused_yaw = 0.0
         self.last_imu_time = None
+        self.last_pub_time = 0.0
 
-        # Periodic 30 Hz timer
+        # Fallback timer (30 Hz) when camera is occluded or between frames
         self.create_timer(1.0 / 30.0, self.timer_tick)
         self.get_logger().info(
             "Direct USV Fusion Node ready on server (Camera+IMU fusion with automatic Camera-Only fallback)."
@@ -228,9 +229,18 @@ class DirectUsvFusion(Node):
             yaw_err = normalize_angle(cam_yaw - self.fused_yaw)
             self.fused_yaw = normalize_angle(self.fused_yaw + self.yaw_corr_rate * yaw_err)
 
+        # Publish immediately upon receiving new visual frame for zero latency
+        self._publish_fused_state()
+
     def timer_tick(self):
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        if (now_sec - self.last_pub_time) >= 0.032:
+            self._publish_fused_state()
+
+    def _publish_fused_state(self):
         now = self.get_clock().now()
         now_sec = now.nanoseconds * 1e-9
+        self.last_pub_time = now_sec
         stamp = now.to_msg()
 
         imu_active = self._is_imu_active(now_sec)
