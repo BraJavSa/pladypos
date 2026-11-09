@@ -55,65 +55,24 @@ Visualization Manager:
       Filter (whitelist): ""
       Frame Timeout: 15
       Frames:
-        All Enabled: true
+        All Enabled: false
         camera:
           Value: true
         odom:
           Value: true
         usv5_odom:
           Value: true
-        usv5_visual:
-          Value: true
       Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
-      Show Names: true
+      Show Names: false
       Tree:
         camera:
           odom:
             usv5_odom:
               {}
       Update Interval: 0
-      Value: true
-    - Angle Tolerance: 0.01
-      Class: rviz_default_plugins/Odometry
-      Covariance:
-        Orientation:
-          Alpha: 0.5
-          Color: 255; 255; 127
-          Color Style: Unique
-          Frame: Local
-          Offset: 1
-          Scale: 1
-          Value: false
-        Position:
-          Alpha: 0.3
-          Color: 204; 51; 204
-          Scale: 1
-          Value: false
-        Value: false
-      Enabled: true
-      Keep: 1
-      Name: USV Pose (/usv5/odometry/filtered)
-      Position Tolerance: 0.001
-      Shape:
-        Alpha: 1
-        Axes Length: 0.45
-        Axes Radius: 0.04
-        Color: 0; 255; 255
-        Head Length: 0.18
-        Head Radius: 0.09
-        Shaft Length: 0.40
-        Shaft Radius: 0.045
-        Value: Arrow
-      Topic:
-        Depth: 10
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /usv5/odometry/filtered
       Value: true
     - Class: rviz_default_plugins/Marker
       Enabled: true

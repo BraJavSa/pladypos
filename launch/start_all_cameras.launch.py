@@ -80,7 +80,7 @@ def generate_launch_description():
             '-p', 'tag_size:=0.25',
             '-p', 'odom_topic:=/usv5/visual_odom',
             '-p', 'tag_detected_topic:=/usv5/tag_detected',
-            '-p', 'publish_tf:=true',
+            '-p', 'publish_tf:=false',
             '-p', 'camera_frame:=camera',
             '-p', 'child_frame:=usv5_visual'
         ],
