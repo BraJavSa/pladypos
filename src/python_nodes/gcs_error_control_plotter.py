@@ -296,46 +296,43 @@ def main(args=None):
     spin_thread.start()
 
     plt.style.use('seaborn-v0_8-darkgrid' if 'seaborn-v0_8-darkgrid' in plt.style.available else 'default')
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 8.5), sharex=True)
-    fig.canvas.manager.set_window_title("PlaDyPos USV - Errores (e_u, e_v, e_psi) y Acciones de Control (T_u, T_v, T_r)")
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 8.0), sharex=True)
+    fig.canvas.manager.set_window_title("PlaDyPos USV - Tracking Errors & Control Actions")
 
     # Dual Y-axes for Control Actions
     ax1_r = ax1.twinx()
     ax2_r = ax2.twinx()
     ax3_r = ax3.twinx()
 
-    # Subplot 1: Longitudinal (e_u & T_u)
-    line_eu, = ax1.plot([], [], color='#1f77b4', lw=2.0, label='Error Longitudinal $e_u$ [m]')
-    line_Tu, = ax1_r.plot([], [], color='#ff7f0e', lw=1.6, alpha=0.85, linestyle='--', label='Fuerza $T_u$ [N]')
+    # Subplot 1: Surge (e_u & T_u) - No title, all English labels
+    line_eu, = ax1.plot([], [], color='#1f77b4', lw=2.0, label='Surge Error $e_u$ [m]')
+    line_Tu, = ax1_r.plot([], [], color='#ff7f0e', lw=1.6, alpha=0.85, linestyle='--', label='Surge Force $T_u$ [N]')
     ax1.axhline(0.0, color='gray', lw=0.8, alpha=0.5)
-    ax1.set_ylabel('Error $e_u$ [m]', color='#1f77b4', fontweight='bold')
-    ax1_r.set_ylabel('Control $T_u$ [N]', color='#ff7f0e', fontweight='bold')
-    ax1.set_title('1. Dinámica Longitudinal (Avance / Surge): Error $e_u$ vs. Fuerza $T_u$', fontweight='bold')
+    ax1.set_ylabel('$e_u$ [m]', color='#1f77b4', fontweight='bold')
+    ax1_r.set_ylabel('$T_u$ [N]', color='#ff7f0e', fontweight='bold')
     ax1.set_ylim(-1.2, 1.2)
     ax1_r.set_ylim(-25.0, 25.0)
     lines1 = [line_eu, line_Tu]
     ax1.legend(lines1, [l.get_label() for l in lines1], loc='upper right')
 
-    # Subplot 2: Lateral (e_v & T_v)
-    line_ev, = ax2.plot([], [], color='#2ca02c', lw=2.0, label='Error Lateral $e_v$ [m]')
-    line_Tv, = ax2_r.plot([], [], color='#d62728', lw=1.6, alpha=0.85, linestyle='--', label='Fuerza $T_v$ [N]')
+    # Subplot 2: Sway (e_v & T_v) - No title, all English labels
+    line_ev, = ax2.plot([], [], color='#2ca02c', lw=2.0, label='Sway Error $e_v$ [m]')
+    line_Tv, = ax2_r.plot([], [], color='#d62728', lw=1.6, alpha=0.85, linestyle='--', label='Sway Force $T_v$ [N]')
     ax2.axhline(0.0, color='gray', lw=0.8, alpha=0.5)
-    ax2.set_ylabel('Error $e_v$ [m]', color='#2ca02c', fontweight='bold')
-    ax2_r.set_ylabel('Control $T_v$ [N]', color='#d62728', fontweight='bold')
-    ax2.set_title('2. Dinámica Lateral (Sway): Error $e_v$ vs. Fuerza $T_v$', fontweight='bold')
+    ax2.set_ylabel('$e_v$ [m]', color='#2ca02c', fontweight='bold')
+    ax2_r.set_ylabel('$T_v$ [N]', color='#d62728', fontweight='bold')
     ax2.set_ylim(-1.2, 1.2)
     ax2_r.set_ylim(-20.0, 20.0)
     lines2 = [line_ev, line_Tv]
     ax2.legend(lines2, [l.get_label() for l in lines2], loc='upper right')
 
-    # Subplot 3: Yaw (e_psi & T_r)
-    line_epsi, = ax3.plot([], [], color='#9467bd', lw=2.0, label='Error Orientación $e_\\psi$ [rad]')
-    line_Tr, = ax3_r.plot([], [], color='#8c564b', lw=1.6, alpha=0.85, linestyle='--', label='Torque $T_r$ [N·m]')
+    # Subplot 3: Yaw (e_psi & T_r) - No title, all English labels
+    line_epsi, = ax3.plot([], [], color='#9467bd', lw=2.0, label='Yaw Error $e_\\psi$ [rad]')
+    line_Tr, = ax3_r.plot([], [], color='#8c564b', lw=1.6, alpha=0.85, linestyle='--', label='Yaw Torque $T_r$ [N·m]')
     ax3.axhline(0.0, color='gray', lw=0.8, alpha=0.5)
-    ax3.set_ylabel('Error $e_\\psi$ [rad]', color='#9467bd', fontweight='bold')
-    ax3_r.set_ylabel('Control $T_r$ [N·m]', color='#8c564b', fontweight='bold')
-    ax3.set_xlabel('Tiempo [s]', fontweight='bold')
-    ax3.set_title('3. Dinámica de Orientación (Yaw): Error $e_\\psi$ vs. Torque $T_r$', fontweight='bold')
+    ax3.set_ylabel('$e_\\psi$ [rad]', color='#9467bd', fontweight='bold')
+    ax3_r.set_ylabel('$T_r$ [N·m]', color='#8c564b', fontweight='bold')
+    ax3.set_xlabel('Time [s]', fontweight='bold')
     ax3.set_ylim(-math.pi, math.pi)
     ax3_r.set_ylim(-12.0, 12.0)
     lines3 = [line_epsi, line_Tr]
@@ -405,3 +402,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+

@@ -555,11 +555,11 @@ class InverseDynamicsControllerNode(Node):
         target_marker.action = Marker.ADD
         target_marker.pose.position.x = xd
         target_marker.pose.position.y = yd
-        target_marker.pose.position.z = 0.06
+        target_marker.pose.position.z = -0.04
         target_marker.pose.orientation.w = 1.0
-        target_marker.scale.x = 0.18
-        target_marker.scale.y = 0.18
-        target_marker.scale.z = 0.18
+        target_marker.scale.x = 0.09
+        target_marker.scale.y = 0.09
+        target_marker.scale.z = 0.09
         target_marker.color = ColorRGBA(r=1.0, g=0.82, b=0.0, a=0.95)  # Bright Gold Sphere
         self.marker_pub.publish(target_marker)
 

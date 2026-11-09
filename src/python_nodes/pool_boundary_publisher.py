@@ -57,7 +57,7 @@ class PoolBoundaryPublisher(Node):
             p = Point()
             p.x = self.center_x + self.ax_70 * math.sin(theta)
             p.y = self.center_y + self.ay_70 * math.sin(2.0 * theta)
-            p.z = 0.02
+            p.z = -0.05
             self.fig8_points.append(p)
 
         # Publish at 0.5 Hz (every 2 seconds) for minimal ROS overhead
