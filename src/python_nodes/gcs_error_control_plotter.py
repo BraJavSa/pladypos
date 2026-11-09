@@ -207,29 +207,33 @@ class GCSErrorControlPlotter(Node):
         now_s = time.monotonic()
         xd_new = float(msg.pose.position.x)
         yd_new = float(msg.pose.position.y)
+        ori = msg.pose.orientation
 
-        # Estimate desired heading psi_d from motion direction of target sphere + Figure-8 LUT
         with self.lock:
-            vel_angle = None
-            if self.prev_xd is not None and self.prev_ref_time is not None:
-                dt = now_s - self.prev_ref_time
-                dx = xd_new - self.prev_xd
-                dy = yd_new - self.prev_yd
-                if dt > 1e-3 and math.hypot(dx, dy) > 1e-3:
-                    vel_angle = math.atan2(dy, dx)
-
-            d2 = (self.lut_x - xd_new) ** 2 + (self.lut_y - yd_new) ** 2
-            if vel_angle is not None:
-                dpsi = np.arctan2(np.sin(self.lut_psi - vel_angle), np.cos(self.lut_psi - vel_angle))
-                score = d2 + (0.25 ** 2) * (dpsi ** 2)
+            if abs(ori.z) > 1e-6 or abs(ori.w - 1.0) > 1e-6:
+                self.psid = quat_to_yaw(ori.w, ori.x, ori.y, ori.z)
             else:
-                dpsi = np.arctan2(np.sin(self.lut_psi - self.psid), np.cos(self.lut_psi - self.psid))
-                score = d2 + (0.15 ** 2) * (dpsi ** 2)
+                vel_angle = None
+                if self.prev_xd is not None and self.prev_ref_time is not None:
+                    dt = now_s - self.prev_ref_time
+                    dx = xd_new - self.prev_xd
+                    dy = yd_new - self.prev_yd
+                    if dt > 1e-3 and math.hypot(dx, dy) > 1e-3:
+                        vel_angle = math.atan2(dy, dx)
 
-            idx = int(np.argmin(score))
+                d2 = (self.lut_x - xd_new) ** 2 + (self.lut_y - yd_new) ** 2
+                if vel_angle is not None:
+                    dpsi = np.arctan2(np.sin(self.lut_psi - vel_angle), np.cos(self.lut_psi - vel_angle))
+                    score = d2 + (0.25 ** 2) * (dpsi ** 2)
+                else:
+                    dpsi = np.arctan2(np.sin(self.lut_psi - self.psid), np.cos(self.lut_psi - self.psid))
+                    score = d2 + (0.15 ** 2) * (dpsi ** 2)
+
+                idx = int(np.argmin(score))
+                self.psid = float(self.lut_psi[idx])
+
             self.xd = xd_new
             self.yd = yd_new
-            self.psid = float(self.lut_psi[idx])
             self.prev_xd = xd_new
             self.prev_yd = yd_new
             self.prev_ref_time = now_s

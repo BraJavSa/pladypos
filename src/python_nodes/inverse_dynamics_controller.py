@@ -34,6 +34,7 @@ from rclpy.executors import ExternalShutdownException
 from ament_index_python.packages import get_package_share_directory
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu
+from geometry_msgs.msg import Point
 from std_msgs.msg import Float32MultiArray, Bool, ColorRGBA
 from visualization_msgs.msg import Marker
 
@@ -153,9 +154,10 @@ class InverseDynamicsControllerNode(Node):
         self.declare_parameter('span_x', 5.0292)
         self.declare_parameter('span_y', 4.8290)
         self.declare_parameter('scale_factor', 0.70)
-        self.declare_parameter('period_s', 90.0)         # Slower, gentler 90 s Figure-8
+        self.declare_parameter('trajectory_type', 'figure8')  # 'figure8', 'ellipse', or 'rounded_rect'
+        self.declare_parameter('period_s', 90.0)              # Trajectory period [s]
         self.declare_parameter('control_rate_hz', 30.0)
-        self.declare_parameter('soft_start_s', 6.0)      # Smooth 6 s velocity & heading ramp
+        self.declare_parameter('soft_start_s', 6.0)           # Smooth 6 s velocity & heading ramp
         self.declare_parameter('start_at_closest', True)
 
         # Decoupled Longitudinal (surge, X_body) vs Lateral (sway, Y_body) & Yaw gains:
@@ -184,6 +186,7 @@ class InverseDynamicsControllerNode(Node):
         self.span_x = float(self.get_parameter('span_x').value)
         self.span_y = float(self.get_parameter('span_y').value)
         self.scale_factor = float(self.get_parameter('scale_factor').value)
+        self.trajectory_type = str(self.get_parameter('trajectory_type').value).strip().lower()
         self.ax_8 = 0.5 * self.span_x * self.scale_factor
         self.ay_8 = 0.5 * self.span_y * self.scale_factor
         self.period_s = float(self.get_parameter('period_s').value)
@@ -257,9 +260,8 @@ class InverseDynamicsControllerNode(Node):
 
         self.get_logger().info(
             f"3-DOF Fossen Inverse Dynamics Controller initialized at {self.rate_hz:.0f} Hz:\n"
-            f"  Pool Center (X_c, Y_c) : ({self.center_x:.4f}, {self.center_y:.4f}) m\n"
-            f"  70% Figure-8 Semi-Axes : A_x = {self.ax_8:.4f} m, A_y = {self.ay_8:.4f} m\n"
-            f"  Figure-8 Period        : {self.period_s:.1f} s (closest start: {self.start_at_closest})\n"
+            f"  Trajectory Type        : {self.trajectory_type.upper()} (Period = {self.period_s:.1f} s, closest start: {self.start_at_closest})\n"
+            f"  Pool Center (X_c, Y_c) : ({self.center_x:.4f}, {self.center_y:.4f}) m | Semi-Axes: ({self.ax_8:.3f}, {self.ay_8:.3f}) m\n"
             f"  Surge Gains (X_body)   : kp_x={self.kp_x}, kd_x={self.kd_x}, max_tau_u={self.max_tau_u} N\n"
             f"  Sway Gains  (Y_body)   : kp_y={self.kp_y}, kd_y={self.kd_y}, max_tau_v={self.max_tau_v} N\n"
             f"  Yaw Gains   (Psi)      : kp_yaw={self.kp_yaw}, kd_yaw={self.kd_yaw}, max_tau_r={self.max_tau_r} N*m\n"
@@ -285,22 +287,48 @@ class InverseDynamicsControllerNode(Node):
             pass
 
     def evaluate_figure8(self, t_sec: float):
-        """Evaluates [xd, yd, psid], [dxd, dyd, dpsid], [ddxd, ddyd, ddpsid] at time t_sec."""
+        """
+        Evaluates [xd, yd, psid], [dxd, dyd, dpsid], [ddxd, ddyd, ddpsid] at time t_sec
+        for trajectory_type in ('figure8', 'ellipse', 'rounded_rect').
+        """
         w = self.omega
         Ax, Ay = self.ax_8, self.ay_8
         xc, yc = self.center_x, self.center_y
 
-        xd = xc + Ax * math.sin(w * t_sec)
-        yd = yc + Ay * math.sin(2.0 * w * t_sec)
-
-        dxd = Ax * w * math.cos(w * t_sec)
-        dyd = 2.0 * Ay * w * math.cos(2.0 * w * t_sec)
-
-        ddxd = -Ax * (w ** 2) * math.sin(w * t_sec)
-        ddyd = -4.0 * Ay * (w ** 2) * math.sin(2.0 * w * t_sec)
-
-        dddxd = -Ax * (w ** 3) * math.cos(w * t_sec)
-        dddyd = -8.0 * Ay * (w ** 3) * math.cos(2.0 * w * t_sec)
+        if self.trajectory_type in ('ellipse', 'circle', 'oval'):
+            # Smooth Centered Ellipse / Circle
+            xd = xc + Ax * math.cos(w * t_sec)
+            yd = yc + Ay * math.sin(w * t_sec)
+            dxd = -Ax * w * math.sin(w * t_sec)
+            dyd = Ay * w * math.cos(w * t_sec)
+            ddxd = -Ax * (w ** 2) * math.cos(w * t_sec)
+            ddyd = -Ay * (w ** 2) * math.sin(w * t_sec)
+            dddxd = Ax * (w ** 3) * math.sin(w * t_sec)
+            dddyd = -Ay * (w ** 3) * math.cos(w * t_sec)
+        elif self.trajectory_type in ('rounded_rect', 'square', 'stadium'):
+            # Smooth Rounded Rectangle (Fourier super-ellipse, C^infinity smooth corners)
+            k3 = 0.14 / 1.14
+            k1 = 1.0 / 1.14
+            c1, s1 = math.cos(w * t_sec), math.sin(w * t_sec)
+            c3, s3 = math.cos(3.0 * w * t_sec), math.sin(3.0 * w * t_sec)
+            xd = xc + Ax * (k1 * c1 - k3 * c3)
+            yd = yc + Ay * (k1 * s1 + k3 * s3)
+            dxd = Ax * w * (-k1 * s1 + 3.0 * k3 * s3)
+            dyd = Ay * w * (k1 * c1 + 3.0 * k3 * c3)
+            ddxd = Ax * (w ** 2) * (-k1 * c1 + 9.0 * k3 * c3)
+            ddyd = Ay * (w ** 2) * (-k1 * s1 - 9.0 * k3 * s3)
+            dddxd = Ax * (w ** 3) * (k1 * s1 - 27.0 * k3 * s3)
+            dddyd = Ay * (w ** 3) * (-k1 * c1 - 27.0 * k3 * c3)
+        else:
+            # Default: Figure-8 (Lemniscate)
+            xd = xc + Ax * math.sin(w * t_sec)
+            yd = yc + Ay * math.sin(2.0 * w * t_sec)
+            dxd = Ax * w * math.cos(w * t_sec)
+            dyd = 2.0 * Ay * w * math.cos(2.0 * w * t_sec)
+            ddxd = -Ax * (w ** 2) * math.sin(w * t_sec)
+            ddyd = -4.0 * Ay * (w ** 2) * math.sin(2.0 * w * t_sec)
+            dddxd = -Ax * (w ** 3) * math.cos(w * t_sec)
+            dddyd = -8.0 * Ay * (w ** 3) * math.cos(2.0 * w * t_sec)
 
         psid = math.atan2(dyd, dxd)
         v2 = dxd * dxd + dyd * dyd + 1e-12
@@ -314,20 +342,14 @@ class InverseDynamicsControllerNode(Node):
         return eta_d, deta_d, ddeta_d
 
     def find_closest_trajectory_time(self, x0: float, y0: float, yaw0: float) -> float:
-        """Finds t_offset in [0, period_s) on the Figure-8 closest to the boat's current pose."""
-        w = self.omega
-        Ax, Ay = self.ax_8, self.ay_8
-        xc, yc = self.center_x, self.center_y
+        """Finds t_offset in [0, period_s) on the active trajectory closest to the boat's current pose."""
         n_samples = 1000
         best_t = 0.0
         best_score = 1e18
         for i in range(n_samples):
             t_cand = (i / n_samples) * self.period_s
-            xd = xc + Ax * math.sin(w * t_cand)
-            yd = yc + Ay * math.sin(2.0 * w * t_cand)
-            dxd = Ax * w * math.cos(w * t_cand)
-            dyd = 2.0 * Ay * w * math.cos(2.0 * w * t_cand)
-            psid = math.atan2(dyd, dxd)
+            eta_c, _, _ = self.evaluate_figure8(t_cand)
+            xd, yd, psid = float(eta_c[0]), float(eta_c[1]), float(eta_c[2])
             d2 = (xd - x0) ** 2 + (yd - y0) ** 2
             dpsi = wrap_to_pi(psid - yaw0)
             score = d2 + (0.20 ** 2) * (1.0 - math.cos(dpsi))
@@ -397,6 +419,26 @@ class InverseDynamicsControllerNode(Node):
             m.id = id_del
             m.action = Marker.DELETE
             self.marker_pub.publish(m)
+        # Also publish the active trajectory curve (181 points at z = -0.05) so RViz displays the exact shape
+        ref_marker = Marker()
+        ref_marker.header.frame_id = self.frame_id
+        ref_marker.ns = "figure8_reference"
+        ref_marker.id = 10
+        ref_marker.type = Marker.LINE_STRIP
+        ref_marker.action = Marker.ADD
+        ref_marker.scale.x = 0.045
+        ref_marker.color = ColorRGBA(r=0.95, g=0.22, b=0.22, a=0.95)
+        ref_marker.pose.orientation.w = 1.0
+        n_pts = 180
+        for i in range(n_pts + 1):
+            t_i = (i / n_pts) * self.period_s
+            eta_i, _, _ = self.evaluate_figure8(t_i)
+            pt = Point()
+            pt.x = float(eta_i[0])
+            pt.y = float(eta_i[1])
+            pt.z = -0.05
+            ref_marker.points.append(pt)
+        self.marker_pub.publish(ref_marker)
 
     def control_loop_tick(self):
         if not self.has_odom:
@@ -527,7 +569,7 @@ class InverseDynamicsControllerNode(Node):
         # 5. Ultra-lightweight RViz target sphere at 15 Hz (every 2nd tick, < 100 bytes)
         self.tick_count += 1
         if self.tick_count % 2 == 0:
-            self._publish_target_sphere(float(eta_d[0]), float(eta_d[1]))
+            self._publish_target_sphere(float(eta_d[0]), float(eta_d[1]), float(psi_d))
 
         # Log sample in memory (written to CSV only on shutdown)
         c_d = math.cos(psi_d)
@@ -545,7 +587,7 @@ class InverseDynamicsControllerNode(Node):
             f"{out_data[0]:.4f}", f"{out_data[1]:.4f}", f"{out_data[2]:.4f}", f"{out_data[3]:.4f}"
         ])
 
-    def _publish_target_sphere(self, xd: float, yd: float):
+    def _publish_target_sphere(self, xd: float, yd: float, psid: float = 0.0):
         target_marker = Marker()
         # Use Time(0, 0) so RViz renders immediately on the latest 'odom' frame without clock-skew queue lag
         target_marker.header.frame_id = self.frame_id
@@ -556,7 +598,10 @@ class InverseDynamicsControllerNode(Node):
         target_marker.pose.position.x = xd
         target_marker.pose.position.y = yd
         target_marker.pose.position.z = -0.04
-        target_marker.pose.orientation.w = 1.0
+        target_marker.pose.orientation.w = math.cos(0.5 * psid)
+        target_marker.pose.orientation.x = 0.0
+        target_marker.pose.orientation.y = 0.0
+        target_marker.pose.orientation.z = math.sin(0.5 * psid)
         target_marker.scale.x = 0.09
         target_marker.scale.y = 0.09
         target_marker.scale.z = 0.09

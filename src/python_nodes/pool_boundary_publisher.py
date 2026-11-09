@@ -40,6 +40,7 @@ class PoolBoundaryPublisher(Node):
         self.ay_70 = float(self.get_parameter('ay_70').value)
 
         self.pub_marker = self.create_publisher(Marker, self.marker_topic, 10)
+        self.create_subscription(Marker, self.marker_topic, self.marker_cb, 10)
 
         # 4 Pool boundary corners (in 'odom' surface frame)
         self.corners = [
@@ -64,6 +65,11 @@ class PoolBoundaryPublisher(Node):
         self.create_timer(2.0, self.publish_markers)
         self.publish_markers()
         self.get_logger().info(f"PoolBoundaryPublisher started on {self.marker_topic} (frame: {self.frame_id})")
+
+    def marker_cb(self, msg: Marker):
+        # Adopt trajectory reference curve sent by controller (181 points) so RViz shows any active figure
+        if msg.ns == "figure8_reference" and len(msg.points) == 181:
+            self.fig8_points = list(msg.points)
 
     def publish_markers(self):
         # 1. Outer Pool Walls (Cyan / Bright Blue Line Strip)
