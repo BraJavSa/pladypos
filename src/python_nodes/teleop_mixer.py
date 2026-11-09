@@ -130,6 +130,11 @@ class TeleopMixer(Node):
         pwm_msg.data = data
         self.pwm_pub.publish(pwm_msg)
 
+    def stop_thrusters(self):
+        pwm_msg = Float32MultiArray()
+        pwm_msg.data = [0.0, 0.0, 0.0, 0.0]
+        self.pwm_pub.publish(pwm_msg)
+
 def main(args=None):
     rclpy.init(args=args)
     node = TeleopMixer()
@@ -138,6 +143,10 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        try:
+            node.stop_thrusters()
+        except Exception:
+            pass
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

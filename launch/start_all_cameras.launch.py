@@ -10,13 +10,12 @@ def generate_launch_description():
         collide with USV (ROS_DOMAIN_ID=5) on the 10.0.10.0/16 subnet.
       1. Strictly ONLY camera .204 (camera_0354)
       2. web_video_server (port 8082) + stream_guard.py (port 8083)
-      3. visual_tag_estimator.py -> /usv5/visual_odom + TF camera -> usv5_visual
+      3. visual_tag_estimator.py -> /usv5/visual_odom (publish_tf:=false)
       4. static_transform_publisher -> TF camera -> odom
       5. direct_usv_fusion.py -> fuses /usv5/visual_odom + /usv5/imu/data (or camera-only fallback
          when IMU is absent) -> /usv5/odometry/filtered + TF odom -> usv5_odom
-      6. teleop_mixer.py -> maps /usv5/joy (from laptop) -> /usv5/pwm_out (to USV NUC)
-      7. pool_boundary_publisher.py -> publishes pool walls & 70% Figure-8 on /pool_boundary
-      8. zenoh-bridge-ros2dds router on tcp/0.0.0.0:7447 (-d 10 --no-multicast-scouting)
+      6. pool_boundary_publisher.py -> publishes pool walls & 70% Figure-8 on /pool_boundary
+      7. zenoh-bridge-ros2dds router on tcp/0.0.0.0:7447 (-d 10 --no-multicast-scouting)
     """
     active_cam_id = '0354'
     calib = '/config/calibration_536890354.yaml'
@@ -69,7 +68,7 @@ def generate_launch_description():
     )
     nodes.append(stream_guard)
 
-    # 3. AprilTag Visual Estimator on rawfie (reads localhost:8083 -> /usv5/visual_odom + TF camera -> usv5_visual)
+    # 3. AprilTag Visual Estimator on rawfie (reads localhost:8083 -> /usv5/visual_odom)
     visual_tag_estimator = ExecuteProcess(
         cmd=[
             'python3', '/config/visual_tag_estimator.py',
@@ -129,19 +128,7 @@ def generate_launch_description():
     )
     nodes.append(direct_usv_fusion)
 
-    # 6. Teleoperation Mixer on rawfie (maps /usv5/joy from laptop -> /usv5/pwm_out to USV NUC)
-    teleop_mixer = ExecuteProcess(
-        cmd=[
-            'python3', '/config/teleop_mixer.py',
-            '--ros-args',
-            '-r', '__ns:=/usv5'
-        ],
-        output='screen',
-        emulate_tty=True
-    )
-    nodes.append(teleop_mixer)
-
-    # 7. Pool Boundary & Figure-8 Reference Marker Publisher on rawfie
+    # 6. Pool Boundary & Figure-8 Reference Marker Publisher on rawfie
     pool_boundary = ExecuteProcess(
         cmd=[
             'python3', '/config/pool_boundary_publisher.py',
@@ -154,7 +141,7 @@ def generate_launch_description():
     )
     nodes.append(pool_boundary)
 
-    # 8. Central Zenoh Router on rawfie (v1.10.2, ROS_DOMAIN_ID=10, --no-multicast-scouting)
+    # 7. Central Zenoh Router on rawfie (v1.10.2, ROS_DOMAIN_ID=10, --no-multicast-scouting)
     zenoh_router = ExecuteProcess(
         cmd=[
             '/config/zenoh-bridge-ros2dds',

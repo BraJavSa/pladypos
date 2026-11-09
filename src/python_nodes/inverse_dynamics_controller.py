@@ -352,21 +352,37 @@ class InverseDynamicsControllerNode(Node):
         now_s = time.monotonic()
         pos = msg.pose.pose.position
         ori = msg.pose.pose.orientation
+        tw = msg.twist.twist
 
         x_new = float(pos.x)
         y_new = float(pos.y)
         yaw_new = quat_to_yaw(ori.w, ori.x, ori.y, ori.z)
 
-        if self.prev_odom_time is not None:
-            dt_odom = max(1e-3, now_s - self.prev_odom_time)
-            if not self.has_visual_vel:
-                vx_raw = (x_new - self.prev_x) / dt_odom
-                vy_raw = (y_new - self.prev_y) / dt_odom
-                self.vx_odom = 0.6 * self.vx_odom + 0.4 * vx_raw
-                self.vy_odom = 0.6 * self.vy_odom + 0.4 * vy_raw
+        # Use body-frame velocities (u, v, r) published directly in /usv5/odometry/filtered
+        u_ekf = float(tw.linear.x)
+        v_ekf = float(tw.linear.y)
+        r_ekf = float(tw.angular.z)
+
+        if abs(u_ekf) > 1e-9 or abs(v_ekf) > 1e-9 or abs(r_ekf) > 1e-9:
+            self.u = u_ekf
+            self.v = v_ekf
             if not self.has_imu_r:
-                dyaw = wrap_to_pi(yaw_new - self.prev_yaw)
-                self.r = 0.6 * self.r + 0.4 * (dyaw / dt_odom)
+                self.r = r_ekf
+        else:
+            if self.prev_odom_time is not None:
+                dt_odom = max(1e-3, now_s - self.prev_odom_time)
+                if not self.has_visual_vel:
+                    vx_raw = (x_new - self.prev_x) / dt_odom
+                    vy_raw = (y_new - self.prev_y) / dt_odom
+                    self.vx_odom = 0.6 * self.vx_odom + 0.4 * vx_raw
+                    self.vy_odom = 0.6 * self.vy_odom + 0.4 * vy_raw
+                if not self.has_imu_r:
+                    dyaw = wrap_to_pi(yaw_new - self.prev_yaw)
+                    self.r = 0.6 * self.r + 0.4 * (dyaw / dt_odom)
+            cos_y = math.cos(yaw_new)
+            sin_y = math.sin(yaw_new)
+            self.u = self.vx_odom * cos_y + self.vy_odom * sin_y
+            self.v = -self.vx_odom * sin_y + self.vy_odom * cos_y
 
         self.x = x_new
         self.y = y_new
@@ -375,11 +391,6 @@ class InverseDynamicsControllerNode(Node):
         self.prev_y = y_new
         self.prev_yaw = yaw_new
         self.prev_odom_time = now_s
-
-        cos_y = math.cos(self.yaw)
-        sin_y = math.sin(self.yaw)
-        self.u = self.vx_odom * cos_y + self.vy_odom * sin_y
-        self.v = -self.vx_odom * sin_y + self.vy_odom * cos_y
         self.has_odom = True
 
     def control_loop_tick(self):
