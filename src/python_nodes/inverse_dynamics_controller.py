@@ -159,16 +159,17 @@ class InverseDynamicsControllerNode(Node):
         self.declare_parameter('start_at_closest', True)
 
         # Decoupled Longitudinal (surge, X_body) vs Lateral (sway, Y_body) & Yaw gains:
-        # Lateral gains (kp_y, kd_y) are intentionally much lower + natural water drag Yv is preserved
-        # so the lateral axis never oscillates side-to-side.
-        self.declare_parameter('kp_x', 2.60)
-        self.declare_parameter('kd_x', 2.60)
-        self.declare_parameter('ki_x', 0.20)
+        # Both surge (kp_x, kd_x) and sway (kp_y, kd_y) use gentle gains + reference drag feedforward
+        # so the water's natural hydrodynamic damping (Xu, Yv) prevents any oscillation or lunging.
+        self.declare_parameter('kp_x', 0.90)
+        self.declare_parameter('kd_x', 1.15)
+        self.declare_parameter('ki_x', 0.00)
+        self.declare_parameter('max_tau_u', 16.0)        # Cap longitudinal surge force [N] for smooth forward motion
         self.declare_parameter('kp_y', 0.85)
         self.declare_parameter('kd_y', 1.10)
         self.declare_parameter('max_tau_v', 12.0)        # Cap lateral sway force [N] to prevent side-to-side oscillation
-        self.declare_parameter('kp_yaw', 2.20)
-        self.declare_parameter('kd_yaw', 2.60)
+        self.declare_parameter('kp_yaw', 2.00)
+        self.declare_parameter('kd_yaw', 2.40)
         self.declare_parameter('max_tau_r', 7.0)         # Cap yaw torque [N*m] so rotation never steals XY authority
 
         self.declare_parameter('odom_topic', '/usv5/odometry/filtered')
@@ -195,6 +196,7 @@ class InverseDynamicsControllerNode(Node):
         self.kp_x = float(self.get_parameter('kp_x').value)
         self.kd_x = float(self.get_parameter('kd_x').value)
         self.ki_x = float(self.get_parameter('ki_x').value)
+        self.max_tau_u = float(self.get_parameter('max_tau_u').value)
         self.kp_y = float(self.get_parameter('kp_y').value)
         self.kd_y = float(self.get_parameter('kd_y').value)
         self.max_tau_v = float(self.get_parameter('max_tau_v').value)
@@ -258,7 +260,7 @@ class InverseDynamicsControllerNode(Node):
             f"  Pool Center (X_c, Y_c) : ({self.center_x:.4f}, {self.center_y:.4f}) m\n"
             f"  70% Figure-8 Semi-Axes : A_x = {self.ax_8:.4f} m, A_y = {self.ay_8:.4f} m\n"
             f"  Figure-8 Period        : {self.period_s:.1f} s (closest start: {self.start_at_closest})\n"
-            f"  Surge Gains (X_body)   : kp_x={self.kp_x}, kd_x={self.kd_x}, ki_x={self.ki_x}\n"
+            f"  Surge Gains (X_body)   : kp_x={self.kp_x}, kd_x={self.kd_x}, max_tau_u={self.max_tau_u} N\n"
             f"  Sway Gains  (Y_body)   : kp_y={self.kp_y}, kd_y={self.kd_y}, max_tau_v={self.max_tau_v} N\n"
             f"  Yaw Gains   (Psi)      : kp_yaw={self.kp_yaw}, kd_yaw={self.kd_yaw}, max_tau_r={self.max_tau_r} N*m\n"
             f"  RViz Output            : Single moving sphere on {self.marker_topic} (15 Hz)"
@@ -479,13 +481,14 @@ class InverseDynamicsControllerNode(Node):
         ar_body = float(ddeta_d[2]) + self.kp_yaw * epsi_clamped + self.kd_yaw * depsi
 
         # 3. 3-DOF Fossen Feedforward + Feedback Generalized Forces
-        # Note: Lateral drag feedforward uses reference v_d_b instead of measured self.v so the
-        # water's natural hydrodynamic drag (-Yv * v = -110 * v) passively damps out side-to-side sway!
+        # Note: Both longitudinal (u_d_b) and lateral (v_d_b) drag feedforwards use the reference
+        # velocities so the water's natural hydrodynamic drag (-Xu*u, -Yv*v) passively damps overshoots!
         m = self.model
-        tau_u = m["m11"] * au_body + (m["Xu"] + m["Xuu"] * abs(self.u)) * self.u
+        tau_u = m["m11"] * au_body + (m["Xu"] + m["Xuu"] * abs(u_d_b)) * u_d_b
+        tau_u = float(np.clip(tau_u, -self.max_tau_u, self.max_tau_u))
         tau_v = m["m22"] * av_body + (m["Yv"] + m["Yvv"] * abs(v_d_b)) * v_d_b
         tau_v = float(np.clip(tau_v, -self.max_tau_v, self.max_tau_v))
-        tau_r = m["m33"] * ar_body + (m["Nr"] + m["Nrr"] * abs(self.r)) * self.r
+        tau_r = m["m33"] * ar_body + (m["Nr"] + m["Nrr"] * abs(deta_d[2])) * float(deta_d[2])
         tau_r = float(np.clip(tau_r, -self.max_tau_r, self.max_tau_r))
 
         # 4. Position-Prioritized & Symmetric Thruster Allocation -> Richards Inverse
