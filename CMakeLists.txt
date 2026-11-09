@@ -17,6 +17,7 @@ install(PROGRAMS
   src/python_nodes/direct_usv_fusion.py
   src/python_nodes/pool_boundary_publisher.py
   src/python_nodes/inverse_dynamics_controller.py
+  src/python_nodes/mpc_controller.py
   scripts/start_zenoh_gcs.sh
   scripts/start_zenoh_usv.sh
   scripts/sync_boat_time.sh

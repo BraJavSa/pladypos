@@ -126,13 +126,14 @@ class InverseDynamicsControllerNode(Node):
         self.declare_parameter('span_x', 5.0292)
         self.declare_parameter('span_y', 4.8290)
         self.declare_parameter('scale_factor', 0.70)
-        self.declare_parameter('period_s', 55.0)
+        self.declare_parameter('period_s', 85.0)
         self.declare_parameter('control_rate_hz', 30.0)
-        self.declare_parameter('soft_start_s', 3.0)
-        self.declare_parameter('kp_xy', 2.25)
-        self.declare_parameter('kd_xy', 3.00)
-        self.declare_parameter('kp_yaw', 4.84)
-        self.declare_parameter('kd_yaw', 4.40)
+        self.declare_parameter('soft_start_s', 5.0)
+        self.declare_parameter('start_at_closest', True)
+        self.declare_parameter('kp_xy', 1.40)
+        self.declare_parameter('kd_xy', 1.85)
+        self.declare_parameter('kp_yaw', 2.60)
+        self.declare_parameter('kd_yaw', 2.40)
         self.declare_parameter('odom_topic', '/usv5/odometry/filtered')
         self.declare_parameter('visual_odom_topic', '/usv5/visual_odom')
         self.declare_parameter('imu_topic', '/usv5/imu/data')
@@ -152,6 +153,7 @@ class InverseDynamicsControllerNode(Node):
         self.rate_hz = float(self.get_parameter('control_rate_hz').value)
         self.dt = 1.0 / self.rate_hz
         self.soft_start_s = float(self.get_parameter('soft_start_s').value)
+        self.start_at_closest = bool(self.get_parameter('start_at_closest').value)
 
         kp_xy = float(self.get_parameter('kp_xy').value)
         kd_xy = float(self.get_parameter('kd_xy').value)
@@ -200,6 +202,10 @@ class InverseDynamicsControllerNode(Node):
         self.r = 0.0
 
         self.start_wall_time = None
+        self.t_offset = 0.0
+        self.start_x = self.center_x
+        self.start_y = self.center_y
+        self.cmd_filtered = np.zeros(4, dtype=float)
         self.log_rows = []
         self.exec_poses = []
         self.exec_points = []
@@ -268,6 +274,29 @@ class InverseDynamicsControllerNode(Node):
         ddeta_d = np.array([ddxd, ddyd, ddpsid], dtype=float)
         return eta_d, deta_d, ddeta_d
 
+    def find_closest_trajectory_time(self, x0: float, y0: float, yaw0: float) -> float:
+        """Finds t_offset in [0, period_s) on the Figure-8 closest to the boat's current pose."""
+        w = self.omega
+        Ax, Ay = self.ax_8, self.ay_8
+        xc, yc = self.center_x, self.center_y
+        n_samples = 1000
+        best_t = 0.0
+        best_score = 1e18
+        for i in range(n_samples):
+            t_cand = (i / n_samples) * self.period_s
+            xd = xc + Ax * math.sin(w * t_cand)
+            yd = yc + Ay * math.sin(2.0 * w * t_cand)
+            dxd = Ax * w * math.cos(w * t_cand)
+            dyd = 2.0 * Ay * w * math.cos(2.0 * w * t_cand)
+            psid = math.atan2(dyd, dxd)
+            d2 = (xd - x0) ** 2 + (yd - y0) ** 2
+            dpsi = wrap_to_pi(psid - yaw0)
+            score = d2 + (0.25 ** 2) * (1.0 - math.cos(dpsi))
+            if score < best_score:
+                best_score = score
+                best_t = t_cand
+        return best_t
+
     def _build_reference_path_messages(self):
         stamp = self.get_clock().now().to_msg()
         path_msg = NavPath()
@@ -320,7 +349,7 @@ class InverseDynamicsControllerNode(Node):
         fig8_marker.points = self.ref_marker_points
         self.marker_pub.publish(fig8_marker)
 
-        # 2. Start / Pool Center Point Marker (Green Sphere at (X_c, Y_c))
+        # 2. Closest Trajectory Start Point Marker (Green Sphere at (start_x, start_y))
         start_marker = Marker()
         start_marker.header.stamp = stamp
         start_marker.header.frame_id = self.frame_id
@@ -328,8 +357,8 @@ class InverseDynamicsControllerNode(Node):
         start_marker.id = 11
         start_marker.type = Marker.SPHERE
         start_marker.action = Marker.ADD
-        start_marker.pose.position.x = self.center_x
-        start_marker.pose.position.y = self.center_y
+        start_marker.pose.position.x = float(self.start_x)
+        start_marker.pose.position.y = float(self.start_y)
         start_marker.pose.position.z = 0.05
         start_marker.pose.orientation.w = 1.0
         start_marker.scale.x = 0.18
@@ -400,7 +429,17 @@ class InverseDynamicsControllerNode(Node):
         now_s = time.monotonic()
         if self.start_wall_time is None:
             self.start_wall_time = now_s
-            self.get_logger().info("First odometry received! Starting 30 Hz Figure-8 Inverse Dynamics tracking.")
+            if self.start_at_closest:
+                self.t_offset = self.find_closest_trajectory_time(self.x, self.y, self.yaw)
+            else:
+                self.t_offset = 0.0
+            eta0, _, _ = self.evaluate_figure8(self.t_offset)
+            self.start_x = float(eta0[0])
+            self.start_y = float(eta0[1])
+            self.publish_reference_visuals()
+            self.get_logger().info(
+                f"First odometry at ({self.x:.2f}, {self.y:.2f}). Starting at closest Figure-8 phase t_offset={self.t_offset:.2f} s ({self.start_x:.2f}, {self.start_y:.2f})."
+            )
 
         t_elapsed = now_s - self.start_wall_time
 
@@ -410,7 +449,7 @@ class InverseDynamicsControllerNode(Node):
         else:
             s_ramp = 1.0
 
-        eta_d, deta_d, ddeta_d = self.evaluate_figure8(t_elapsed)
+        eta_d, deta_d, ddeta_d = self.evaluate_figure8(self.t_offset + t_elapsed)
         deta_d = s_ramp * deta_d
         ddeta_d = (s_ramp ** 2) * ddeta_d
 
@@ -459,8 +498,16 @@ class InverseDynamicsControllerNode(Node):
 
         # 4. Thruster Allocation & Richards Inverse Mapping -> [-1.0, 1.0]
         f_motors = PHI_PINV @ tau_cmd
-        cmd_norm = thrust_to_cmd_richards(f_motors)
-        u_FR, u_FL, u_BR, u_BL = float(cmd_norm[0]), float(cmd_norm[1]), float(cmd_norm[2]), float(cmd_norm[3])
+        cmd_raw = thrust_to_cmd_richards(f_motors)
+        cmd_target = 0.72 * self.cmd_filtered + 0.28 * cmd_raw
+        delta_cmd = np.clip(cmd_target - self.cmd_filtered, -0.05, 0.05)
+        self.cmd_filtered = np.clip(self.cmd_filtered + delta_cmd, -1.0, 1.0)
+        u_FR, u_FL, u_BR, u_BL = (
+            float(self.cmd_filtered[0]),
+            float(self.cmd_filtered[1]),
+            float(self.cmd_filtered[2]),
+            float(self.cmd_filtered[3]),
+        )
 
         # Map to physical Arduino channels via motor_mapping.yaml
         out_data = [0.0, 0.0, 0.0, 0.0]

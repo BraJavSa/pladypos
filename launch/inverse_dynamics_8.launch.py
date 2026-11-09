@@ -33,7 +33,7 @@ def generate_launch_description():
         'scale_factor', default_value='0.70', description='Fraction of pool workspace (0.70 = 70%)'
     )
     period_arg = DeclareLaunchArgument(
-        'period_s', default_value='55.0', description='Figure-8 period [s]'
+        'period_s', default_value='85.0', description='Figure-8 period [s] (slower & smoother)'
     )
     use_rviz_arg = DeclareLaunchArgument(
         'use_rviz', default_value='false', description='Set true only if launching on GCS laptop with display'
