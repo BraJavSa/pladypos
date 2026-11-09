@@ -68,20 +68,22 @@ def generate_launch_description():
     )
     nodes.append(stream_guard)
 
-    # 3. AprilTag Visual Estimator on rawfie (reads localhost:8083 -> /usv5/visual_odom)
+    # 3. AprilTag Visual Estimator on rawfie (subscribes directly to /camera_0354/camera_0354/image_raw at 25.5 Hz!)
     visual_tag_estimator = ExecuteProcess(
         cmd=[
             'python3', '/config/visual_tag_estimator.py',
             '--ros-args',
-            '-p', f'stream_url:=http://127.0.0.1:8083/stream?topic=/camera_{active_cam_id}/camera_{active_cam_id}/image_raw',
-            '-p', f'calib_url:=http://127.0.0.1:8083/calibration?camera={active_cam_id}',
+            '-p', 'use_ros_topic:=true',
+            '-p', f'image_topic:=/camera_{active_cam_id}/camera_{active_cam_id}/image_raw',
+            '-p', f'calib_file:={calib}',
+            '-p', 'use_filter:=false',
             '-p', 'tag_id:=285',
             '-p', 'tag_size:=0.25',
             '-p', 'odom_topic:=/usv5/visual_odom',
             '-p', 'tag_detected_topic:=/usv5/tag_detected',
             '-p', 'publish_tf:=false',
-            '-p', 'camera_frame:=camera',
-            '-p', 'child_frame:=usv5_visual'
+            '-p', 'camera_frame_id:=camera',
+            '-p', 'usv_frame_id:=usv5_visual'
         ],
         output='screen',
         emulate_tty=True

@@ -2,13 +2,15 @@
 """
 visual_tag_estimator.py
 Node 2 of localization pipeline:
-Processes overhead camera stream, detects AprilTag 285, and publishes
-the visual 3D position (x, y, z) and visual orientation (qw, qx, qy, qz)
+Processes overhead camera frames (directly via ROS 2 sensor_msgs/Image topic on the
+server at full 25.5 Hz, or via HTTP MJPEG fallback), detects AprilTag 285, and
+publishes the visual 3D position (x, y, z) and visual orientation (qw, qx, qy, qz)
 on /usv5/visual_odom.
 """
 
 import json
 import math
+import os
 import threading
 import time
 import urllib.request
@@ -16,37 +18,59 @@ from collections import deque
 
 import cv2
 import numpy as np
+import yaml
 
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import ExternalShutdownException
+from rclpy.qos import qos_profile_sensor_data
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Image
 from std_msgs.msg import Bool
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 
 DEFAULT_STREAM_URL         = "http://10.250.253.1:8083/stream?topic=/camera_0354/camera_0354/image_raw"
 DEFAULT_CALIB_URL          = "http://10.250.253.1:8083/calibration?camera=0354"
+DEFAULT_CALIB_FILE         = "/config/calibration_536890354.yaml"
+DEFAULT_IMAGE_TOPIC        = "/camera_0354/camera_0354/image_raw"
 DEFAULT_TAG_ID             = 285
 DEFAULT_TAG_SIZE           = 0.25
 DEFAULT_ODOM_TOPIC         = "/usv5/visual_odom"
 DEFAULT_TAG_DETECTED_TOPIC = "/usv5/tag_detected"
 DEFAULT_CAMERA_FRAME       = "camera"
 DEFAULT_USV_FRAME          = "usv5"
-DEFAULT_RATE_HZ            = 10.0
+DEFAULT_RATE_HZ            = 30.0
 
-DEFAULT_FX = 1109.2076
-DEFAULT_FY = 1114.4800
-DEFAULT_CX = 1019.4268
-DEFAULT_CY = 1033.4869
+DEFAULT_FX = 1109.207609712391
+DEFAULT_FY = 1114.480046638150
+DEFAULT_CX = 1019.426843076671
+DEFAULT_CY = 1033.486904196278
+DEFAULT_DIST = [-0.1268312444881338, 0.04624447483590838, -0.0006651708835886797, -0.0003698069893855444, 0.0]
 
 
-def fetch_calibration(calib_url: str):
-    """Fetches intrinsic camera matrix and distortion coefficients from calibration endpoint."""
+def fetch_calibration(calib_url: str, calib_file: str = DEFAULT_CALIB_FILE):
+    """Loads intrinsic camera matrix and distortion coefficients from YAML file or HTTP endpoint."""
     fx, fy, cx, cy = DEFAULT_FX, DEFAULT_FY, DEFAULT_CX, DEFAULT_CY
-    dist = np.zeros((5, 1), dtype=np.float64)
+    dist = np.array(DEFAULT_DIST, dtype=np.float64).reshape(-1, 1)
+
+    if calib_file and os.path.exists(calib_file):
+        try:
+            with open(calib_file, "r") as f:
+                data = yaml.safe_load(f)
+            m = data["camera_matrix"]["data"]
+            fx, cx = float(m[0]), float(m[2])
+            fy, cy = float(m[4]), float(m[5])
+            if "distortion_coefficients" in data and "data" in data["distortion_coefficients"]:
+                d = data["distortion_coefficients"]["data"]
+                dist = np.array(d, dtype=np.float64).reshape(-1, 1)
+            K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64)
+            return K, dist
+        except Exception:
+            pass
+
     try:
-        with urllib.request.urlopen(calib_url, timeout=3) as r:
+        with urllib.request.urlopen(calib_url, timeout=2) as r:
             data = json.load(r)
         m = data["camera_matrix"]["data"]
         fx, cx = float(m[0]), float(m[2])
@@ -64,7 +88,7 @@ def fetch_calibration(calib_url: str):
 
 
 class MJPEGReader:
-    """Non-blocking background reader for HTTP MJPEG stream."""
+    """Non-blocking background reader for HTTP MJPEG stream (fallback when not using ROS Image topic)."""
     def __init__(self, url: str):
         self._url = url
         self._frame = None
@@ -94,7 +118,7 @@ class MJPEGReader:
                 req = urllib.request.urlopen(self._url, timeout=10)
                 buf = b""
                 while not self._stop.is_set():
-                    chunk = req.read(4096)
+                    chunk = req.read(16384)
                     if not chunk:
                         break
                     buf += chunk
@@ -134,34 +158,47 @@ def build_detector():
         return "opencv", (aruco_dict, params)
 
 
-def detect_tag(detector_info, gray, target_id: int, roi_box=None):
+def extract_gray_patch(raw_img: np.ndarray, encoding: str, roi_box=None):
     """
-    Detects specified AprilTag ID in grayscale image.
-    If roi_box=(x_min, y_min, x_max, y_max) is provided, searches inside the cropped ROI,
-    offsetting resulting coordinates back to full image coordinate space.
-    Returns: (corners (4,2), center (2,)) or (None, None)
+    Converts raw image (or only the ROI sub-region for speed) to 8-bit grayscale.
+    Ensures even Bayer alignment when cropping Bayer images.
     """
-    backend, det = detector_info
-    h_img, w_img = gray.shape[:2]
-
+    h_img, w_img = raw_img.shape[:2]
     if roi_box is not None:
         rx0, ry0, rx1, ry1 = roi_box
-        rx0 = max(0, min(w_img - 1, int(rx0)))
-        ry0 = max(0, min(h_img - 1, int(ry0)))
-        rx1 = max(rx0 + 10, min(w_img, int(rx1)))
-        ry1 = max(ry0 + 10, min(h_img, int(ry1)))
-        img_patch = gray[ry0:ry1, rx0:rx1]
+        rx0 = max(0, min(w_img - 2, int(rx0))) & ~1
+        ry0 = max(0, min(h_img - 2, int(ry0))) & ~1
+        rx1 = max(rx0 + 16, min(w_img, int(rx1) + (int(rx1) & 1)))
+        ry1 = max(ry0 + 16, min(h_img, int(ry1) + (int(ry1) & 1)))
+        sub = raw_img[ry0:ry1, rx0:rx1]
         offset_x, offset_y = rx0, ry0
     else:
-        img_patch = gray
+        sub = raw_img
         offset_x, offset_y = 0, 0
 
+    enc = encoding.lower()
+    if "bayer_gbrg" in enc:
+        gray_patch = cv2.cvtColor(sub, cv2.COLOR_BayerGB2GRAY)
+    elif "bayer_grbg" in enc:
+        gray_patch = cv2.cvtColor(sub, cv2.COLOR_BayerGR2GRAY)
+    elif "bayer_rggb" in enc:
+        gray_patch = cv2.cvtColor(sub, cv2.COLOR_BayerRG2GRAY)
+    elif "bayer_bggr" in enc:
+        gray_patch = cv2.cvtColor(sub, cv2.COLOR_BayerBG2GRAY)
+    elif sub.ndim == 3:
+        gray_patch = cv2.cvtColor(sub, cv2.COLOR_BGR2GRAY)
+    else:
+        gray_patch = sub
+
+    return gray_patch, offset_x, offset_y
+
+
+def detect_tag_in_patch(detector_info, img_patch: np.ndarray, target_id: int, offset_x: int = 0, offset_y: int = 0):
+    backend, det = detector_info
     if backend == "pupil":
         tags = det.detect(img_patch)
         for t in tags:
             if int(t.tag_id) == target_id:
-                # pupil_apriltags returns corners ordered: [bottom-right, top-right, top-left, bottom-left]
-                # Map to OpenCV ArUco order [top-left, top-right, bottom-right, bottom-left]: [1, 0, 3, 2]
                 raw_corners = t.corners[[1, 0, 3, 2]].copy()
                 raw_corners[:, 0] += offset_x
                 raw_corners[:, 1] += offset_y
@@ -243,7 +280,6 @@ def estimate_pose(corners_px: np.ndarray, tag_size: float, K: np.ndarray, dist: 
                 return None
             rvecs, tvecs = [rvec], [tvec]
 
-        # Prefer face-up candidate (R[2,2] < 0 in downward camera optical frame)
         best_idx = 0
         best_vz = 1.0
         for i, rv in enumerate(rvecs):
@@ -293,7 +329,7 @@ def make_twist_covariance():
 
 
 class MovingAverageFilter2D:
-    def __init__(self, window_size: int = 6):
+    def __init__(self, window_size: int = 2):
         self.window_size = window_size
         self.buf_x = deque(maxlen=window_size)
         self.buf_y = deque(maxlen=window_size)
@@ -311,7 +347,7 @@ class MovingAverageFilter2D:
 
 
 class AlphaBeta1D:
-    def __init__(self, alpha: float = 0.63, beta: float = 0.37):
+    def __init__(self, alpha: float = 0.75, beta: float = 0.35):
         self.alpha = alpha
         self.beta = beta
         self.x = None
@@ -341,6 +377,9 @@ class VisualTagEstimatorNode(Node):
     def __init__(self):
         super().__init__("visual_tag_estimator")
 
+        self.declare_parameter("use_ros_topic", True)
+        self.declare_parameter("image_topic", DEFAULT_IMAGE_TOPIC)
+        self.declare_parameter("calib_file", DEFAULT_CALIB_FILE)
         self.declare_parameter("stream_url", DEFAULT_STREAM_URL)
         self.declare_parameter("calib_url", DEFAULT_CALIB_URL)
         self.declare_parameter("tag_id", DEFAULT_TAG_ID)
@@ -351,11 +390,14 @@ class VisualTagEstimatorNode(Node):
         self.declare_parameter("usv_frame_id", DEFAULT_USV_FRAME)
         self.declare_parameter("publish_tf", False)
         self.declare_parameter("publish_rate", DEFAULT_RATE_HZ)
-        self.declare_parameter("use_filter", True)
-        self.declare_parameter("window_size", 6)
-        self.declare_parameter("ab_alpha", 0.63)
-        self.declare_parameter("ab_beta", 0.37)
+        self.declare_parameter("use_filter", False)
+        self.declare_parameter("window_size", 2)
+        self.declare_parameter("ab_alpha", 0.75)
+        self.declare_parameter("ab_beta", 0.35)
 
+        self.use_ros_topic = bool(self.get_parameter("use_ros_topic").value)
+        self.image_topic = self.get_parameter("image_topic").value
+        self.calib_file = self.get_parameter("calib_file").value
         self.stream_url = self.get_parameter("stream_url").value
         self.calib_url = self.get_parameter("calib_url").value
         self.tag_id = int(self.get_parameter("tag_id").value)
@@ -375,9 +417,24 @@ class VisualTagEstimatorNode(Node):
         self._pub_tag_detected = self.create_publisher(Bool, self.tag_detected_topic, 10)
         self._tf_br = TransformBroadcaster(self)
 
-        self._K, self._dist = fetch_calibration(self.calib_url)
+        self._K, self._dist = fetch_calibration(self.calib_url, self.calib_file)
         self._detector = build_detector()
-        self._reader = MJPEGReader(self.stream_url)
+
+        self._frame_lock = threading.Lock()
+        self._latest_raw = None
+        self._latest_enc = "mono8"
+        self._new_ros_frame = threading.Event()
+
+        self._reader = None
+        if self.use_ros_topic:
+            self.create_subscription(
+                Image,
+                self.image_topic,
+                self._ros_image_cb,
+                qos_profile_sensor_data
+            )
+        else:
+            self._reader = MJPEGReader(self.stream_url)
 
         self._stop = threading.Event()
         self._detection_thread = threading.Thread(target=self._detection_loop, daemon=True)
@@ -391,39 +448,63 @@ class VisualTagEstimatorNode(Node):
 
         # ROI Tracking State (bounding box crop around last known tag center)
         self._last_tag_center = None
-        self._roi_half_size = 250  # 500x500 px window around tag center (tag ~55 px, boat moves smooth)
+        self._roi_half_size = 260
         self._roi_consecutive_misses = 0
-        self._max_roi_misses = 3   # After 3 misses in ROI, fall back to full 2048x2048 frame search
+        self._max_roi_misses = 2
 
         self.get_logger().info(
-            f"VisualTagEstimatorNode (Node 2) initialized:\n"
-            f"  Stream URL: {self.stream_url}\n"
+            f"VisualTagEstimatorNode initialized:\n"
+            f"  Mode: {'Direct ROS 2 Image Topic (' + self.image_topic + ')' if self.use_ros_topic else 'HTTP MJPEG (' + self.stream_url + ')'}\n"
             f"  Tag ID: {self.tag_id} ({self.tag_size} m)\n"
             f"  Visual Odometry Published: {self.odom_topic}\n"
-            f"  Tag Detection Topic: {self.tag_detected_topic}\n"
-            f"  Publish TF: {self.publish_tf}\n"
-            f"  ROI Window: {self._roi_half_size * 2}x{self._roi_half_size * 2} px"
+            f"  Publish TF: {self.publish_tf}"
         )
 
+    def _ros_image_cb(self, msg: Image):
+        try:
+            arr = np.frombuffer(msg.data, dtype=np.uint8).reshape((msg.height, msg.width, -1))
+            if arr.shape[2] == 1:
+                arr = arr[:, :, 0]
+            with self._frame_lock:
+                self._latest_raw = arr
+                self._latest_enc = msg.encoding
+            self._new_ros_frame.set()
+        except Exception:
+            pass
+
     def start(self):
-        self._reader.start()
+        if self._reader is not None:
+            self._reader.start()
         self._detection_thread.start()
 
     def stop(self):
         self._stop.set()
-        self._reader.stop()
+        self._new_ros_frame.set()
+        if self._reader is not None:
+            self._reader.stop()
         self._detection_thread.join(timeout=3)
 
     def _detection_loop(self):
         while not self._stop.is_set():
-            gray = self._reader.wait_new_frame(timeout=0.5)
-            if gray is None:
-                continue
+            if self.use_ros_topic:
+                if not self._new_ros_frame.wait(timeout=0.5):
+                    continue
+                self._new_ros_frame.clear()
+                with self._frame_lock:
+                    raw_img = self._latest_raw
+                    enc = self._latest_enc
+                if raw_img is None:
+                    continue
+            else:
+                raw_img = self._reader.wait_new_frame(timeout=0.5)
+                enc = "mono8"
+                if raw_img is None:
+                    continue
 
             corners = None
             center = None
 
-            # 1. Try fast ROI search if tag was recently detected
+            # 1. Fast ROI search (only debayers the 520x520 patch around the boat!)
             if self._last_tag_center is not None and self._roi_consecutive_misses < self._max_roi_misses:
                 cx, cy = self._last_tag_center
                 roi_box = (
@@ -432,18 +513,19 @@ class VisualTagEstimatorNode(Node):
                     cx + self._roi_half_size,
                     cy + self._roi_half_size
                 )
-                corners, center = detect_tag(self._detector, gray, self.tag_id, roi_box=roi_box)
+                patch, ox, oy = extract_gray_patch(raw_img, enc, roi_box=roi_box)
+                corners, center = detect_tag_in_patch(self._detector, patch, self.tag_id, ox, oy)
                 if corners is None:
                     self._roi_consecutive_misses += 1
 
             # 2. Fall back to full frame if ROI not active or missed
             if corners is None:
-                corners, center = detect_tag(self._detector, gray, self.tag_id, roi_box=None)
+                patch, ox, oy = extract_gray_patch(raw_img, enc, roi_box=None)
+                corners, center = detect_tag_in_patch(self._detector, patch, self.tag_id, ox, oy)
 
             if corners is None:
                 continue
 
-            # Detection success: update ROI tracking center and reset miss counter
             self._last_tag_center = center
             self._roi_consecutive_misses = 0
 
@@ -453,14 +535,14 @@ class VisualTagEstimatorNode(Node):
 
             x, y, z, qw, qx, qy, qz = res
             z = 5.1
-            now_sec = time.time()
+            now_sec = time.monotonic()
 
             if self.use_filter:
                 if self._last_detection_time is None or (now_sec - self._last_detection_time) > 0.5:
                     self.ma_filter.reset()
                     self.ab_x.reset()
                     self.ab_y.reset()
-                    dt = 0.1
+                    dt = 0.04
                 else:
                     dt = max(0.001, now_sec - self._last_detection_time)
 
@@ -472,7 +554,7 @@ class VisualTagEstimatorNode(Node):
                 vx, vy = 0.0, 0.0
                 if self._last_detection_time is not None:
                     dt = now_sec - self._last_detection_time
-                    if dt > 0.001:
+                    if 0.002 < dt < 0.5:
                         vx = (x - self._prev_x) / dt
                         vy = (y - self._prev_y) / dt
                 self._prev_x = x
