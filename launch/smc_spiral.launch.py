@@ -36,37 +36,40 @@ def generate_launch_description():
         'period_s', default_value='120.0', description='Archimedean Spiral period [s] (2 turns per period)'
     )
     k_pos_arg = DeclareLaunchArgument(
-        'k_pos', default_value='0.65', description='Outer-loop XY position tracking gain'
+        'k_pos', default_value='0.65', description='Outer-loop longitudinal (surge) position tracking gain'
+    )
+    k_pos_v_arg = DeclareLaunchArgument(
+        'k_pos_v', default_value='0.45', description='Outer-loop lateral (sway) position tracking gain'
     )
     k_psi_arg = DeclareLaunchArgument(
-        'k_psi', default_value='1.80', description='Outer-loop yaw heading tracking gain'
+        'k_psi', default_value='0.90', description='Outer-loop yaw heading tracking gain'
     )
     lambda_u_arg = DeclareLaunchArgument(
-        'lambda_u', default_value='1.15', description='Surge sliding surface integral slope'
+        'lambda_u', default_value='0.70', description='Surge sliding surface linear slope'
     )
     lambda_v_arg = DeclareLaunchArgument(
-        'lambda_v', default_value='1.10', description='Sway sliding surface integral slope'
+        'lambda_v', default_value='0.50', description='Sway sliding surface linear slope'
     )
     lambda_r_arg = DeclareLaunchArgument(
-        'lambda_r', default_value='2.20', description='Yaw sliding surface integral slope'
+        'lambda_r', default_value='1.20', description='Yaw sliding surface linear slope'
     )
     k_s_u_arg = DeclareLaunchArgument(
-        'k_s_u', default_value='0.35', description='Surge SMC switching gain'
+        'k_s_u', default_value='0.09', description='Surge SMC switching gain'
     )
     k_s_v_arg = DeclareLaunchArgument(
-        'k_s_v', default_value='0.35', description='Sway SMC switching gain'
+        'k_s_v', default_value='0.05', description='Sway SMC switching gain'
     )
     k_s_r_arg = DeclareLaunchArgument(
-        'k_s_r', default_value='0.45', description='Yaw SMC switching gain'
+        'k_s_r', default_value='0.15', description='Yaw SMC switching gain'
     )
     max_tau_u_arg = DeclareLaunchArgument(
-        'max_tau_u', default_value='18.0', description='Max longitudinal (surge) force [N]'
+        'max_tau_u', default_value='14.0', description='Max longitudinal (surge) force [N]'
     )
     max_tau_v_arg = DeclareLaunchArgument(
-        'max_tau_v', default_value='14.0', description='Max lateral (sway) force [N]'
+        'max_tau_v', default_value='8.5', description='Max lateral (sway) force [N]'
     )
     max_tau_r_arg = DeclareLaunchArgument(
-        'max_tau_r', default_value='7.0', description='Max yaw torque [N*m]'
+        'max_tau_r', default_value='6.0', description='Max yaw torque [N*m]'
     )
     use_rviz_arg = DeclareLaunchArgument(
         'use_rviz', default_value='false', description='Set true only if launching on GCS laptop with display'
@@ -85,6 +88,7 @@ def generate_launch_description():
             'scale_factor': LaunchConfiguration('scale_factor'),
             'period_s': LaunchConfiguration('period_s'),
             'k_pos': LaunchConfiguration('k_pos'),
+            'k_pos_v': LaunchConfiguration('k_pos_v'),
             'k_psi': LaunchConfiguration('k_psi'),
             'lambda_u': LaunchConfiguration('lambda_u'),
             'lambda_v': LaunchConfiguration('lambda_v'),
@@ -121,6 +125,7 @@ def generate_launch_description():
         scale_arg,
         period_arg,
         k_pos_arg,
+        k_pos_v_arg,
         k_psi_arg,
         lambda_u_arg,
         lambda_v_arg,

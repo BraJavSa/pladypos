@@ -274,19 +274,20 @@ class SMCControllerNode(Node):
 
         # 2. 3-DOF Full-Actuated SMC Parameters (3 sliding surfaces: s_u, s_v, s_r)
         self.declare_parameter('k_pos', 0.65)
-        self.declare_parameter('k_psi', 1.80)
-        self.declare_parameter('lambda_u', 1.15)
-        self.declare_parameter('lambda_v', 1.10)
-        self.declare_parameter('lambda_r', 2.20)
-        self.declare_parameter('k_s_u', 0.35)
-        self.declare_parameter('k_s_v', 0.35)
-        self.declare_parameter('k_s_r', 0.45)
-        self.declare_parameter('phi_u', 0.08)
-        self.declare_parameter('phi_v', 0.08)
-        self.declare_parameter('phi_r', 0.08)
-        self.declare_parameter('max_tau_u', 18.0)
-        self.declare_parameter('max_tau_v', 14.0)
-        self.declare_parameter('max_tau_r', 7.0)
+        self.declare_parameter('k_pos_v', 0.45)
+        self.declare_parameter('k_psi', 0.90)
+        self.declare_parameter('lambda_u', 0.70)
+        self.declare_parameter('lambda_v', 0.50)
+        self.declare_parameter('lambda_r', 1.20)
+        self.declare_parameter('k_s_u', 0.09)
+        self.declare_parameter('k_s_v', 0.05)
+        self.declare_parameter('k_s_r', 0.15)
+        self.declare_parameter('phi_u', 0.25)
+        self.declare_parameter('phi_v', 0.30)
+        self.declare_parameter('phi_r', 0.25)
+        self.declare_parameter('max_tau_u', 14.0)
+        self.declare_parameter('max_tau_v', 8.5)
+        self.declare_parameter('max_tau_r', 6.0)
 
         # 3. Obstacles (CBF + Virtual-Time Reference Governor) Parameters
         self.declare_parameter('enable_obstacles', False)
@@ -334,6 +335,7 @@ class SMCControllerNode(Node):
             self.start_at_closest = False
 
         self.k_pos = float(self.get_parameter('k_pos').value)
+        self.k_pos_v = float(self.get_parameter('k_pos_v').value)
         self.k_psi = float(self.get_parameter('k_psi').value)
         self.lambda_u = float(self.get_parameter('lambda_u').value)
         self.lambda_v = float(self.get_parameter('lambda_v').value)
@@ -787,7 +789,7 @@ class SMCControllerNode(Node):
         psi_d = wrap_to_pi(self.initial_yaw + s_ramp * wrap_to_pi(psi_tangent - self.initial_yaw))
         eta_d[2] = psi_d
 
-        # 1. Inertial Position & Velocity Errors
+        # 1. Inertial Position Errors projected to Body Frame (Surge X_b vs Sway Y_b)
         ex = float(eta_d[0] - self.x)
         ey = float(eta_d[1] - self.y)
         err_xy = math.hypot(ex, ey)
@@ -795,50 +797,44 @@ class SMCControllerNode(Node):
             ex *= 0.70 / err_xy
             ey *= 0.70 / err_xy
 
-        dex = float(deta_d[0] - self.vx_odom)
-        dey = float(deta_d[1] - self.vy_odom)
-
-        vx_cmd_i = float(deta_d[0]) + self.k_pos * ex
-        vy_cmd_i = float(deta_d[1]) + self.k_pos * ey
-        ax_cmd_i = float(ddeta_d[0]) + self.k_pos * dex
-        ay_cmd_i = float(ddeta_d[1]) + self.k_pos * dey
-
-        # 2. Projection to Body Frame via J(psi)^T
         c_psi = math.cos(self.yaw)
         s_psi = math.sin(self.yaw)
 
-        u_cmd = c_psi * vx_cmd_i + s_psi * vy_cmd_i
-        v_cmd = -s_psi * vx_cmd_i + c_psi * vy_cmd_i
+        # Body-frame longitudinal (surge) and lateral (sway) position errors
+        ex_b = c_psi * ex + s_psi * ey
+        ey_b = -s_psi * ex + c_psi * ey
 
-        u_dot_cmd = c_psi * ax_cmd_i + s_psi * ay_cmd_i + self.r * v_cmd
-        v_dot_cmd = -s_psi * ax_cmd_i + c_psi * ay_cmd_i - self.r * u_cmd
+        # Body-frame reference velocities and accelerations
+        u_d_b = c_psi * float(deta_d[0]) + s_psi * float(deta_d[1])
+        v_d_b = -s_psi * float(deta_d[0]) + c_psi * float(deta_d[1])
+        ax_d_b = c_psi * float(ddeta_d[0]) + s_psi * float(ddeta_d[1])
+        ay_d_b = -s_psi * float(ddeta_d[0]) + c_psi * float(ddeta_d[1])
+
+        # Decoupled desired body velocities (gentler k_pos_v on lateral sway axis prevents side-to-side rocking)
+        u_cmd = u_d_b + self.k_pos * ex_b
+        v_cmd = v_d_b + self.k_pos_v * ey_b
 
         epsi = wrap_to_pi(psi_d - self.yaw)
         epsi_clamped = float(np.clip(epsi, -0.50, 0.50))
-        depsi = float(deta_d[2] - self.r)
         r_cmd = float(deta_d[2]) + self.k_psi * epsi_clamped
-        r_dot_cmd = float(ddeta_d[2]) + self.k_psi * depsi
 
-        # 3. 3-DOF Sliding Surfaces (Surge s_u, Sway s_v, Yaw s_r)
+        # 2. 3-DOF Sliding Surfaces (Surge s_u, Sway s_v, Yaw s_r)
         s_u = self.u - u_cmd
         s_v = self.v - v_cmd
         s_r = self.r - r_cmd
 
-        # 4. 3-DOF SMC Reaching Law in Body Accelerations
-        u_dot_des = u_dot_cmd - self.lambda_u * s_u - self.k_s_u * float(sat(s_u / self.phi_u))
-        v_dot_des = v_dot_cmd - self.lambda_v * s_v - self.k_s_v * float(sat(s_v / self.phi_v))
-        r_dot_des = r_dot_cmd - self.lambda_r * s_r - self.k_s_r * float(sat(s_r / self.phi_r))
+        # 3. 3-DOF SMC Reaching Law in Body Accelerations (without noisy velocity derivative amplification)
+        u_dot_des = ax_d_b - self.lambda_u * s_u - self.k_s_u * float(sat(s_u / self.phi_u))
+        v_dot_des = ay_d_b - self.lambda_v * s_v - self.k_s_v * float(sat(s_v / self.phi_v))
+        r_dot_des = float(ddeta_d[2]) - self.lambda_r * s_r - self.k_s_r * float(sat(s_r / self.phi_r))
 
-        # 5. 9-Parameter Fossen Dynamic Inversion
+        # 4. 9-Parameter Fossen Dynamic Inversion (using reference drag feedforward so water passively damps sway)
         m = self.model
-        u_d_b = c_psi * float(deta_d[0]) + s_psi * float(deta_d[1])
-        v_d_b = -s_psi * float(deta_d[0]) + c_psi * float(deta_d[1])
+        tau_u = m["m11"] * u_dot_des + (m["Xu"] + m["Xuu"] * abs(u_d_b)) * u_d_b
+        tau_v = m["m22"] * v_dot_des + (m["Yv"] + m["Yvv"] * abs(v_d_b)) * v_d_b
+        tau_r = m["m33"] * r_dot_des + (m["Nr"] + m["Nrr"] * abs(float(deta_d[2]))) * float(deta_d[2])
 
-        tau_u = m["m11"] * u_dot_des - m["m22"] * self.v * self.r + (m["Xu"] + m["Xuu"] * abs(u_d_b)) * u_d_b
-        tau_v = m["m22"] * v_dot_des + m["m11"] * self.u * self.r + (m["Yv"] + m["Yvv"] * abs(v_d_b)) * v_d_b
-        tau_r = m["m33"] * r_dot_des + (m["m22"] - m["m11"]) * self.u * self.v + (m["Nr"] + m["Nrr"] * abs(float(deta_d[2]))) * float(deta_d[2])
-
-        # 6. Optional 3-DOF CBF Obstacle Avoidance Filter
+        # 5. Optional 3-DOF CBF Obstacle Avoidance Filter
         tau_nominal = np.array([tau_u, tau_v, tau_r], dtype=float)
         tau_safe, cbf_active = self._apply_cbf_filter(tau_nominal)
 
@@ -846,10 +842,10 @@ class SMCControllerNode(Node):
         tau_v = float(np.clip(tau_safe[1], -self.max_tau_v, self.max_tau_v))
         tau_r = float(np.clip(tau_safe[2], -self.max_tau_r, self.max_tau_r))
 
-        # 7. Position-Prioritized & Symmetric Thruster Allocation -> Richards Inverse
+        # 6. Position-Prioritized & Symmetric Thruster Allocation -> Richards Inverse
         f_motors = allocate_priority_xy(tau_u, tau_v, tau_r, self.phi_pinv)
         cmd_raw = thrust_to_cmd_richards(f_motors, self.richards_params)
-        self.cmd_filtered = 0.65 * self.cmd_filtered + 0.35 * cmd_raw
+        self.cmd_filtered = 0.72 * self.cmd_filtered + 0.28 * cmd_raw
         u_FR, u_FL, u_BR, u_BL = (
             float(self.cmd_filtered[0]),
             float(self.cmd_filtered[1]),
