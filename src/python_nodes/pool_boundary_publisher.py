@@ -61,6 +61,9 @@ class PoolBoundaryPublisher(Node):
             p.z = -0.05
             self.fig8_points.append(p)
 
+        # Cache of active obstacle and safety-zone markers received from controller
+        self.obstacle_markers = {}
+
         # Publish at 0.5 Hz (every 2 seconds) for minimal ROS overhead
         self.create_timer(2.0, self.publish_markers)
         self.publish_markers()
@@ -70,6 +73,12 @@ class PoolBoundaryPublisher(Node):
         # Adopt trajectory reference curve sent by controller (181 points) so RViz shows any active figure
         if msg.ns == "figure8_reference" and len(msg.points) == 181:
             self.fig8_points = list(msg.points)
+        elif msg.ns in ("cbf_obstacles", "cbf_safety_zones"):
+            key = (msg.ns, msg.id)
+            if msg.action == Marker.DELETE:
+                self.obstacle_markers.pop(key, None)
+            elif msg.action == Marker.ADD:
+                self.obstacle_markers[key] = msg
 
     def publish_markers(self):
         # 1. Outer Pool Walls (Cyan / Bright Blue Line Strip)
@@ -102,6 +111,10 @@ class PoolBoundaryPublisher(Node):
         fig8_marker.pose.orientation.w = 1.0
         fig8_marker.points = self.fig8_points
         self.pub_marker.publish(fig8_marker)
+
+        # 3. Republish active CBF obstacle buoys and safety-zone rings if active
+        for obs_marker in list(self.obstacle_markers.values()):
+            self.pub_marker.publish(obs_marker)
 
         # Delete legacy start sphere & executed trail markers if present in RViz
         for ns_del, id_del in (("figure8_start", 11), ("usv_executed_trail", 13)):

@@ -1,0 +1,103 @@
+{
+  "vessel_name": "PlaDyPos (usv5)",
+  "configuration": "X-Configuration (Omnidirectional 3-DOF Planar)",
+  "n_thrusters": 4,
+  "thruster_separation_L_m": 0.65,
+  "diagonal_moment_arm_m": 0.4596194077712559,
+  "pwm": {
+    "min_us": 1100.0,
+    "neutral_us": 1500.0,
+    "max_us": 1900.0,
+    "half_range_us": 400.0
+  },
+  "thruster_curve": {
+    "type": "richards_asymmetric",
+    "description": "Asymmetric generalized logistic (Richards) curve mapping normalized command u in [-1, 1] to thrust T in [N]",
+    "A_pos": 1e-06,
+    "K_pos": 40.0209,
+    "B_pos": 2.6249,
+    "v_pos": 0.1615,
+    "C_pos": 0.9432,
+    "M_pos": 1e-05,
+    "maxForceFwd": 36.3827,
+    "A_neg": -31.4990,
+    "K_neg": -1e-05,
+    "B_neg": 3.6986,
+    "v_neg": 0.3264,
+    "C_neg": 0.9713,
+    "M_neg": -1.0,
+    "maxForceRev": -28.4393,
+    "deadzone": 0.01,
+    "min_force_threshold_N": 0.15
+  },
+  "thrusters": [
+    {
+      "index": 0,
+      "motor_id": 1,
+      "code": "FR",
+      "name": "Front Right (Proa Estribor)",
+      "arduino_pin": "A0",
+      "position_body_m": {
+        "x": 0.325,
+        "y": -0.325
+      },
+      "azimuth_deg": 45.0,
+      "force_direction_body": {
+        "cos_alpha": 0.7071067811865476,
+        "sin_alpha": 0.7071067811865475
+      },
+      "moment_arm_m": 0.4596194077712559
+    },
+    {
+      "index": 1,
+      "motor_id": 2,
+      "code": "FL",
+      "name": "Front Left (Proa Babor)",
+      "arduino_pin": "A1",
+      "position_body_m": {
+        "x": 0.325,
+        "y": 0.325
+      },
+      "azimuth_deg": -45.0,
+      "force_direction_body": {
+        "cos_alpha": 0.7071067811865476,
+        "sin_alpha": -0.7071067811865475
+      },
+      "moment_arm_m": -0.4596194077712559
+    },
+    {
+      "index": 2,
+      "motor_id": 3,
+      "code": "BR",
+      "name": "Back Right (Popa Estribor)",
+      "arduino_pin": "A2",
+      "position_body_m": {
+        "x": -0.325,
+        "y": -0.325
+      },
+      "azimuth_deg": 135.0,
+      "force_direction_body": {
+        "cos_alpha": -0.7071067811865475,
+        "sin_alpha": 0.7071067811865476
+      },
+      "moment_arm_m": -0.4596194077712559
+    },
+    {
+      "index": 3,
+      "motor_id": 4,
+      "code": "BL",
+      "name": "Back Left (Popa Babor)",
+      "arduino_pin": "A3",
+      "position_body_m": {
+        "x": -0.325,
+        "y": 0.325
+      },
+      "azimuth_deg": -135.0,
+      "force_direction_body": {
+        "cos_alpha": -0.7071067811865475,
+        "sin_alpha": -0.7071067811865476
+      },
+      "moment_arm_m": 0.4596194077712559
+    }
+  ]
+}

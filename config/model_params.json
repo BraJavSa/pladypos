@@ -1,0 +1,15 @@
+{
+  "vessel_name": "PlaDyPos (usv5)",
+  "model_type": "3dof_fossen_whitebox_9param",
+  "parameters": {
+    "m11": 219.872606,
+    "m22": 230.539377,
+    "m33": 9.584423,
+    "Xu": 136.221265,
+    "Xuu": 77.904259,
+    "Yv": 109.897561,
+    "Yvv": 52.401440,
+    "Nr": 14.456386,
+    "Nrr": 2.194899
+  }
+}
